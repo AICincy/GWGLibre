@@ -37,7 +37,10 @@ import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -89,6 +92,15 @@ public class CastExtractorTool extends JFrame {
     private final Map<BitmapKey, SoftReference<BufferedImage>> imageCache = new ConcurrentHashMap<>();
     private final Map<String, DirectorFile> loadedFiles = new ConcurrentHashMap<>();
     private List<FileNode> allFileNodes = new ArrayList<>();
+
+    // Extraction settings - which member types to include
+    private final Set<MemberType> extractableTypes = EnumSet.of(
+            MemberType.BITMAP, MemberType.SOUND, MemberType.SCRIPT,
+            MemberType.TEXT, MemberType.PALETTE, MemberType.BUTTON,
+            MemberType.SHAPE, MemberType.FILM_LOOP, MemberType.DIGITAL_VIDEO,
+            MemberType.FLASH, MemberType.FONT, MemberType.TRANSITION,
+            MemberType.RTE
+    );
 
     // Service classes
     private final FileProcessor fileProcessor;
@@ -165,6 +177,9 @@ public class CastExtractorTool extends JFrame {
     private void initializeUI() {
         setLayout(new BorderLayout(5, 5));
 
+        // Menu bar
+        setJMenuBar(createMenuBar());
+
         // Top panel with directory selection
         JPanel topPanel = createDirectoryPanel();
         add(topPanel, BorderLayout.NORTH);
@@ -186,6 +201,63 @@ public class CastExtractorTool extends JFrame {
         // Bottom: Status and progress
         JPanel bottomPanel = createBottomPanel();
         add(bottomPanel, BorderLayout.SOUTH);
+    }
+
+    private JMenuBar createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+
+        // Settings menu
+        JMenu settingsMenu = new JMenu("Settings");
+
+        JMenu extractTypesMenu = new JMenu("Extractable Types");
+
+        // Select All / Deselect All
+        JMenuItem selectAllItem = new JMenuItem("Select All");
+        JMenuItem deselectAllItem = new JMenuItem("Deselect All");
+        extractTypesMenu.add(selectAllItem);
+        extractTypesMenu.add(deselectAllItem);
+        extractTypesMenu.addSeparator();
+
+        // Checkbox items for each type
+        MemberType[] types = {
+                MemberType.BITMAP, MemberType.SOUND, MemberType.SCRIPT,
+                MemberType.TEXT, MemberType.PALETTE, MemberType.BUTTON,
+                MemberType.SHAPE, MemberType.FILM_LOOP, MemberType.FONT,
+                MemberType.TRANSITION, MemberType.DIGITAL_VIDEO, MemberType.FLASH,
+                MemberType.RTE
+        };
+
+        List<JCheckBoxMenuItem> checkItems = new ArrayList<>();
+        for (MemberType type : types) {
+            JCheckBoxMenuItem item = new JCheckBoxMenuItem(type.getName(), extractableTypes.contains(type));
+            item.addActionListener(e -> {
+                if (item.isSelected()) {
+                    extractableTypes.add(type);
+                } else {
+                    extractableTypes.remove(type);
+                }
+            });
+            extractTypesMenu.add(item);
+            checkItems.add(item);
+        }
+
+        selectAllItem.addActionListener(e -> {
+            for (int i = 0; i < types.length; i++) {
+                extractableTypes.add(types[i]);
+                checkItems.get(i).setSelected(true);
+            }
+        });
+        deselectAllItem.addActionListener(e -> {
+            extractableTypes.clear();
+            for (JCheckBoxMenuItem ci : checkItems) {
+                ci.setSelected(false);
+            }
+        });
+
+        settingsMenu.add(extractTypesMenu);
+        menuBar.add(settingsMenu);
+
+        return menuBar;
     }
 
     private JPanel createDirectoryPanel() {
@@ -803,7 +875,7 @@ public class CastExtractorTool extends JFrame {
         if (userObject instanceof MemberNodeData memberData) {
             MemberType type = memberData.memberInfo().memberType();
 
-            boolean canExtract = (type == MemberType.BITMAP || type == MemberType.SOUND)
+            boolean canExtract = extractableTypes.contains(type)
                     && !outputDirField.getText().isEmpty();
             extractButton.setEnabled(canExtract);
 
@@ -1061,14 +1133,12 @@ public class CastExtractorTool extends JFrame {
         List<ExtractionTask> tasks = new ArrayList<>();
 
         if (userObject instanceof MemberNodeData memberData) {
-            MemberType type = memberData.memberInfo().memberType();
-            if (type == MemberType.BITMAP || type == MemberType.SOUND) {
+            if (extractableTypes.contains(memberData.memberInfo().memberType())) {
                 tasks.add(new ExtractionTask(memberData.filePath(), memberData.memberInfo()));
             }
         } else if (userObject instanceof FileNode fileNode) {
             for (CastMemberInfo member : fileNode.members()) {
-                MemberType type = member.memberType();
-                if (type == MemberType.BITMAP || type == MemberType.SOUND) {
+                if (extractableTypes.contains(member.memberType())) {
                     tasks.add(new ExtractionTask(fileNode.filePath(), member));
                 }
             }
@@ -1077,7 +1147,7 @@ public class CastExtractorTool extends JFrame {
         if (!tasks.isEmpty()) {
             extractAssets(tasks, Path.of(outputDir));
         } else {
-            setStatus("No extractable assets selected (bitmaps or sounds)");
+            setStatus("No extractable assets selected (check Settings > Extractable Types)");
         }
     }
 
@@ -1096,8 +1166,7 @@ public class CastExtractorTool extends JFrame {
             FileNode fileData = (FileNode) fileNode.getUserObject();
 
             for (CastMemberInfo member : fileData.members()) {
-                MemberType type = member.memberType();
-                if (type == MemberType.BITMAP || type == MemberType.SOUND) {
+                if (extractableTypes.contains(member.memberType())) {
                     tasks.add(new ExtractionTask(fileData.filePath(), member));
                 }
             }
@@ -1106,7 +1175,7 @@ public class CastExtractorTool extends JFrame {
         if (!tasks.isEmpty()) {
             extractAssets(tasks, Path.of(outputDir));
         } else {
-            setStatus("No extractable assets found (bitmaps or sounds)");
+            setStatus("No extractable assets found (check Settings > Extractable Types)");
         }
     }
 
@@ -1117,27 +1186,22 @@ public class CastExtractorTool extends JFrame {
         extractButton.setEnabled(false);
         extractAllButton.setEnabled(false);
 
-        SwingWorker<int[], Integer> worker = new SwingWorker<>() {
+        SwingWorker<Map<MemberType, Integer>, Integer> worker = new SwingWorker<>() {
             @Override
-            protected int[] doInBackground() {
-                int bitmapsExtracted = 0;
-                int soundsExtracted = 0;
+            protected Map<MemberType, Integer> doInBackground() {
+                Map<MemberType, Integer> counts = new LinkedHashMap<>();
                 int processed = 0;
 
                 for (ExtractionTask task : tasks) {
                     boolean success = assetExtractor.extract(task, outputDir);
                     if (success) {
-                        if (task.memberInfo().memberType() == MemberType.BITMAP) {
-                            bitmapsExtracted++;
-                        } else if (task.memberInfo().memberType() == MemberType.SOUND) {
-                            soundsExtracted++;
-                        }
+                        counts.merge(task.memberInfo().memberType(), 1, Integer::sum);
                     }
                     processed++;
                     publish(processed);
                 }
 
-                return new int[]{bitmapsExtracted, soundsExtracted};
+                return counts;
             }
 
             @Override
@@ -1152,22 +1216,18 @@ public class CastExtractorTool extends JFrame {
             @Override
             protected void done() {
                 try {
-                    int[] results = get();
-                    int bitmaps = results[0];
-                    int sounds = results[1];
+                    Map<MemberType, Integer> counts = get();
+                    int total = counts.values().stream().mapToInt(Integer::intValue).sum();
 
-                    StringBuilder msg = new StringBuilder("Extracted ");
-                    if (bitmaps > 0 && sounds > 0) {
-                        msg.append(bitmaps).append(" bitmaps and ").append(sounds).append(" sounds");
-                    } else if (bitmaps > 0) {
-                        msg.append(bitmaps).append(" bitmaps");
-                    } else if (sounds > 0) {
-                        msg.append(sounds).append(" sounds");
+                    if (total > 0) {
+                        List<String> parts = new ArrayList<>();
+                        for (Map.Entry<MemberType, Integer> entry : counts.entrySet()) {
+                            parts.add(entry.getValue() + " " + entry.getKey().getName());
+                        }
+                        setStatus("Extracted " + total + " assets (" + String.join(", ", parts) + ") to " + outputDir);
                     } else {
-                        msg.append("0 assets");
+                        setStatus("Extracted 0 assets to " + outputDir);
                     }
-                    msg.append(" to ").append(outputDir);
-                    setStatus(msg.toString());
                 } catch (Exception ex) {
                     setStatus("Error during extraction: " + ex.getMessage());
                 }
