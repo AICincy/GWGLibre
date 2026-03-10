@@ -28,6 +28,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -213,6 +214,11 @@ public class CastExtractorTool extends JFrame {
         scanBtn.addActionListener(this::scanDirectory);
         panel.add(scanBtn, gbc);
 
+        gbc.gridx = 4;
+        JButton openFileBtn = new JButton("Open File...");
+        openFileBtn.addActionListener(this::openSingleFile);
+        panel.add(openFileBtn, gbc);
+
         // Output directory
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         panel.add(new JLabel("Output Directory:"), gbc);
@@ -228,7 +234,7 @@ public class CastExtractorTool extends JFrame {
         panel.add(browseOutputBtn, gbc);
 
         // Extract buttons
-        gbc.gridx = 3;
+        gbc.gridx = 3; gbc.gridwidth = 1;
         extractButton = new JButton("Extract Selected");
         extractButton.setEnabled(false);
         extractButton.addActionListener(this::extractSelected);
@@ -280,9 +286,13 @@ public class CastExtractorTool extends JFrame {
 
         // Add right-click context menu
         JPopupMenu contextMenu = new JPopupMenu();
-        JMenuItem exportItem = new JMenuItem("Export...");
+        JMenuItem copyNameItem = new JMenuItem("Copy Name");
+        copyNameItem.addActionListener(e -> copySelectedName());
+        contextMenu.add(copyNameItem);
+        JMenuItem exportItem = new JMenuItem("Save As...");
         exportItem.addActionListener(e -> exportSelectedMember());
         contextMenu.add(exportItem);
+        contextMenu.addSeparator();
         JMenuItem viewScoreItem = new JMenuItem("View Score");
         viewScoreItem.addActionListener(e -> viewScoreForSelectedFile());
         contextMenu.add(viewScoreItem);
@@ -290,11 +300,11 @@ public class CastExtractorTool extends JFrame {
         fileTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mousePressed(java.awt.event.MouseEvent e) {
-                if (e.isPopupTrigger()) showContextMenu(e, contextMenu, exportItem, viewScoreItem);
+                if (e.isPopupTrigger()) showContextMenu(e, contextMenu, copyNameItem, exportItem, viewScoreItem);
             }
             @Override
             public void mouseReleased(java.awt.event.MouseEvent e) {
-                if (e.isPopupTrigger()) showContextMenu(e, contextMenu, exportItem, viewScoreItem);
+                if (e.isPopupTrigger()) showContextMenu(e, contextMenu, copyNameItem, exportItem, viewScoreItem);
             }
         });
 
@@ -315,15 +325,39 @@ public class CastExtractorTool extends JFrame {
     }
 
     private void showContextMenu(java.awt.event.MouseEvent e, JPopupMenu contextMenu,
-                                  JMenuItem exportItem, JMenuItem viewScoreItem) {
+                                  JMenuItem copyNameItem, JMenuItem exportItem, JMenuItem viewScoreItem) {
         TreePath path = fileTree.getPathForLocation(e.getX(), e.getY());
         if (path != null) {
             fileTree.setSelectionPath(path);
             DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
             Object userObj = node.getUserObject();
-            exportItem.setEnabled(userObj instanceof MemberNodeData);
-            viewScoreItem.setEnabled(userObj instanceof FileNode || userObj instanceof MemberNodeData);
+            boolean isMember = userObj instanceof MemberNodeData;
+            boolean isFile = userObj instanceof FileNode;
+            copyNameItem.setEnabled(isMember || isFile);
+            exportItem.setEnabled(isMember);
+            viewScoreItem.setEnabled(isFile || isMember);
             contextMenu.show(fileTree, e.getX(), e.getY());
+        }
+    }
+
+    private void copySelectedName() {
+        TreePath path = fileTree.getSelectionPath();
+        if (path == null) return;
+
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+        Object userObject = node.getUserObject();
+
+        String name = null;
+        if (userObject instanceof MemberNodeData memberData) {
+            name = memberData.memberInfo().name();
+        } else if (userObject instanceof FileNode fileNode) {
+            name = fileNode.fileName();
+        }
+
+        if (name != null && !name.isEmpty()) {
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(name), null);
+            setStatus("Copied: " + name);
         }
     }
 
@@ -479,6 +513,65 @@ public class CastExtractorTool extends JFrame {
             String path = chooser.getSelectedFile().getAbsolutePath();
             outputDirField.setText(path);
             prefs.put(PREF_OUTPUT_DIR, path);
+        }
+    }
+
+    private void openSingleFile(ActionEvent e) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                "Director Files (*.dir, *.dxr, *.cst, *.cxt)", "dir", "dxr", "cst", "cxt"));
+
+        String currentDir = inputDirField.getText();
+        if (!currentDir.isEmpty()) {
+            chooser.setCurrentDirectory(new File(currentDir));
+        }
+
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = chooser.getSelectedFile();
+            inputDirField.setText(selectedFile.getAbsolutePath());
+            prefs.put(PREF_INPUT_DIR, selectedFile.getParent());
+
+            clearData();
+            progressBar.setVisible(true);
+            progressBar.setIndeterminate(true);
+            setStatus("Loading " + selectedFile.getName() + "...");
+
+            SwingWorker<FileNode, Void> worker = new SwingWorker<>() {
+                @Override
+                protected FileNode doInBackground() {
+                    return fileProcessor.processFile(selectedFile.toPath());
+                }
+
+                @Override
+                protected void done() {
+                    progressBar.setVisible(false);
+                    progressBar.setIndeterminate(false);
+                    try {
+                        FileNode fileNode = get();
+                        if (fileNode != null) {
+                            List<FileNode> nodes = List.of(fileNode);
+                            populateTree(nodes);
+
+                            int totalMembers = fileNode.members().size();
+                            setStatus("Loaded " + selectedFile.getName() + " with " + totalMembers + " members");
+                            extractAllButton.setEnabled(totalMembers > 0 && !outputDirField.getText().isEmpty());
+
+                            // Auto-expand the single file node
+                            if (rootNode.getChildCount() > 0) {
+                                DefaultMutableTreeNode firstChild = (DefaultMutableTreeNode) rootNode.getChildAt(0);
+                                fileTree.expandPath(new TreePath(firstChild.getPath()));
+                            }
+                        } else {
+                            setStatus("Failed to load: " + selectedFile.getName());
+                        }
+                    } catch (Exception ex) {
+                        setStatus("Error: " + ex.getMessage());
+                    }
+                }
+            };
+
+            worker.execute();
         }
     }
 
