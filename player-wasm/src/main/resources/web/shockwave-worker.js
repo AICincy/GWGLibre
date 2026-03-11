@@ -230,6 +230,15 @@ WasmEngine.prototype.keyUp = function(browserKeyCode, keyChar, modifiers) {
     this.exports.keyUp(browserKeyCode, kb.length, modifiers); this._clearEx();
 };
 
+WasmEngine.prototype.pasteText = function(text) {
+    var kb = new TextEncoder().encode(text || '');
+    if (kb.length > 0) {
+        var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 65536);
+        sbuf.set(kb);
+    }
+    this.exports.pasteText(kb.length); this._clearEx();
+};
+
 WasmEngine.prototype._drainRequests = function() {
     var count = this.exports.getPendingFetchCount(); this._clearEx();
     if (count === 0) return null;
@@ -1091,6 +1100,40 @@ self.onmessage = async function(e) {
                 } catch(ie) { console.error('[WORKER] keyUp error:', ie); }
                 break;
 
+            case 'paste':
+                if (_e && !_e._wasmDead) try { _e.pasteText(msg.text); } catch(e) {}
+                break;
+
+            case 'getSelectedText':
+                var selText = '';
+                if (_e && !_e._wasmDead) try {
+                    var len = _e.exports.getSelectedTextLength(); _e._clearEx();
+                    if (len > 0) {
+                        var addr = _e.exports.getStringBufferAddress(); _e._clearEx();
+                        selText = new TextDecoder().decode(new Uint8Array(_e._mem(), addr, len));
+                    }
+                } catch(e) {}
+                self.postMessage({ type: 'selectedText', text: selText });
+                break;
+
+            case 'cutSelectedText':
+                var cutText = '';
+                if (_e && !_e._wasmDead) try {
+                    var clen = _e.exports.cutSelectedText(); _e._clearEx();
+                    if (clen > 0) {
+                        var caddr = _e.exports.getStringBufferAddress(); _e._clearEx();
+                        cutText = new TextDecoder().decode(new Uint8Array(_e._mem(), caddr, clen));
+                    }
+                } catch(e) {}
+                self.postMessage({ type: 'cutText', text: cutText });
+                break;
+
+            case 'selectAll':
+                if (_e && !_e._wasmDead) try {
+                    _e.exports.selectAll(); _e._clearEx();
+                } catch(e) {}
+                break;
+
             case 'fetchRelayResult': {
                 // Main thread completed a cross-origin fetch on our behalf
                 var relay = _fetchRelayMap[msg.relayId];
@@ -1258,6 +1301,30 @@ self.onmessage = async function(e) {
                         }
                     } catch(e6) {}
 
+                    // Read text caret info for blinking cursor overlay
+                    var caretInfo = null;
+                    var selectionRects = null;
+                    try {
+                        if (_e.exports.isCaretVisible()) {
+                            caretInfo = { x: _e.exports.getCaretX(), y: _e.exports.getCaretY(),
+                                          h: _e.exports.getCaretHeight() };
+                        }
+                        _e._clearEx();
+                        var selCount = _e.exports.getSelectionRectCount(); _e._clearEx();
+                        if (selCount > 0) {
+                            selectionRects = [];
+                            for (var si = 0; si < selCount; si++) {
+                                selectionRects.push({
+                                    x: _e.exports.getSelectionRectX(si),
+                                    y: _e.exports.getSelectionRectY(si),
+                                    w: _e.exports.getSelectionRectW(si),
+                                    h: _e.exports.getSelectionRectH(si)
+                                });
+                            }
+                            _e._clearEx();
+                        }
+                    } catch(e7) {}
+
                     // Drain debug log from WASM
                     var debugLog = null;
                     try {
@@ -1285,6 +1352,8 @@ self.onmessage = async function(e) {
                         spriteCount:   spriteCount,
                         cursorType:    cursorType,
                         cursorBitmap:  cursorBitmap,
+                        caretInfo:     caretInfo,
+                        selectionRects: selectionRects,
                         debugLog:      debugLog
                     }, transferList);
 

@@ -135,13 +135,9 @@ public class AwtTextRenderer implements TextRenderer {
     @Override
     public int[] charPosToLoc(String text, int charIndex,
                               String fontName, int fontSize, String fontStyle,
-                              int fixedLineSpace) {
-        if (text == null || text.isEmpty() || charIndex <= 0) {
-            return new int[]{0, 0};
-        }
-
+                              int fixedLineSpace, String alignment, int fieldWidth) {
         int fontStyleAwt = Font.PLAIN;
-        String style = fontStyle.toLowerCase();
+        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
         if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
         if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
         Font font = resolvePfrAwtFont(fontName, fontStyleAwt, fontSize);
@@ -153,19 +149,98 @@ public class AwtTextRenderer implements TextRenderer {
         Graphics2D g2d = tmpImg.createGraphics();
         g2d.setFont(font);
         FontMetrics fm = g2d.getFontMetrics();
+        int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : fm.getHeight();
+
+        if (text == null || text.isEmpty() || charIndex <= 0) {
+            int alignX = alignmentOffset(alignment, fieldWidth, text == null || text.isEmpty() ? 0 :
+                    fm.stringWidth(text.split("[\r\n]")[0]));
+            g2d.dispose();
+            return new int[]{alignX, 0};
+        }
 
         int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
         int lineNum = lineInfo[0];
         int charsOnLine = lineInfo[1];
 
         String[] lines = text.split("[\r\n]");
-        String lineSubstr = (lineNum < lines.length) ? lines[lineNum].substring(0, charsOnLine) : "";
+        String fullLine = (lineNum < lines.length) ? lines[lineNum] : "";
+        String lineSubstr = (lineNum < lines.length) ? fullLine.substring(0, charsOnLine) : "";
         int x = fm.stringWidth(lineSubstr);
-        int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : fm.getHeight();
-        int y = lineNum * lineHeight + fm.getAscent();
+        int alignX = alignmentOffset(alignment, fieldWidth, fm.stringWidth(fullLine));
+        int y = lineNum * lineHeight;
 
         g2d.dispose();
-        return new int[]{x, y};
+        return new int[]{x + alignX, y};
+    }
+
+    @Override
+    public int getLineHeight(String fontName, int fontSize, String fontStyle,
+                             int fixedLineSpace) {
+        if (fixedLineSpace > 0) return fixedLineSpace;
+        int fontStyleAwt = Font.PLAIN;
+        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
+        if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
+        if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
+        Font font = resolvePfrAwtFont(fontName, fontStyleAwt, fontSize);
+        if (font == null) font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+        BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = tmpImg.createGraphics();
+        g2d.setFont(font);
+        int h = g2d.getFontMetrics().getHeight();
+        g2d.dispose();
+        return h;
+    }
+
+    @Override
+    public int locToCharPos(String text, int x, int y,
+                            String fontName, int fontSize, String fontStyle,
+                            int fixedLineSpace, String alignment, int fieldWidth) {
+        if (text == null || text.isEmpty()) return 0;
+
+        int fontStyleAwt = Font.PLAIN;
+        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
+        if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
+        if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
+        Font font = resolvePfrAwtFont(fontName, fontStyleAwt, fontSize);
+        if (font == null) font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+
+        BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = tmpImg.createGraphics();
+        g2d.setFont(font);
+        FontMetrics fm = g2d.getFontMetrics();
+
+        int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : fm.getHeight();
+        String[] lines = text.split("\r", -1);
+        int lineIndex = Math.max(0, Math.min(y / Math.max(1, lineHeight), lines.length - 1));
+
+        int charsBefore = 0;
+        for (int i = 0; i < lineIndex; i++) {
+            charsBefore += lines[i].length() + 1;
+        }
+
+        String line = lines[lineIndex];
+        int alignX = alignmentOffset(alignment, fieldWidth, fm.stringWidth(line));
+        int localX = x - alignX;
+        int charOnLine = line.length();
+        for (int i = 0; i < line.length(); i++) {
+            int cx = fm.stringWidth(line.substring(0, i + 1));
+            if (cx - fm.charWidth(line.charAt(i)) / 2 >= localX) {
+                charOnLine = i;
+                break;
+            }
+        }
+
+        g2d.dispose();
+        return charsBefore + charOnLine;
+    }
+
+    private static int alignmentOffset(String alignment, int fieldWidth, int lineWidth) {
+        if (alignment == null || fieldWidth <= 0) return 0;
+        return switch (alignment) {
+            case "center" -> (fieldWidth - lineWidth) / 2;
+            case "right" -> fieldWidth - lineWidth;
+            default -> 0;
+        };
     }
 
     // --- PFR TTF Font Resolution ---

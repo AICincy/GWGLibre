@@ -471,6 +471,92 @@ public class WasmEntry {
         return cursorBitmapBuffer != null ? cursorBitmapBuffer.length : 0;
     }
 
+    // === Caret info (JS reads for text cursor rendering) ===
+
+    private static int[] caretInfo;
+
+    @Export(name = "isCaretVisible")
+    public static int isCaretVisible() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        caretInfo = wasmPlayer.getPlayer().getCaretInfo();
+        return caretInfo != null ? 1 : 0;
+    }
+
+    @Export(name = "getCaretX")
+    public static int getCaretX() { return caretInfo != null ? caretInfo[0] : 0; }
+
+    @Export(name = "getCaretY")
+    public static int getCaretY() { return caretInfo != null ? caretInfo[1] : 0; }
+
+    @Export(name = "getCaretHeight")
+    public static int getCaretHeight() { return caretInfo != null ? caretInfo[2] : 0; }
+
+    // Selection highlight rectangles (array of x,y,w,h quads)
+    private static int[] selectionInfo;
+
+    /** Call first to cache selection info. Returns number of highlight rectangles. */
+    @Export(name = "getSelectionRectCount")
+    public static int getSelectionRectCount() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) { selectionInfo = null; return 0; }
+        selectionInfo = wasmPlayer.getPlayer().getSelectionInfo();
+        return selectionInfo != null ? selectionInfo.length / 4 : 0;
+    }
+
+    @Export(name = "getSelectionRectX")
+    public static int getSelectionRectX(int index) { return selectionInfo != null && index * 4 < selectionInfo.length ? selectionInfo[index * 4] : 0; }
+
+    @Export(name = "getSelectionRectY")
+    public static int getSelectionRectY(int index) { return selectionInfo != null && index * 4 + 1 < selectionInfo.length ? selectionInfo[index * 4 + 1] : 0; }
+
+    @Export(name = "getSelectionRectW")
+    public static int getSelectionRectW(int index) { return selectionInfo != null && index * 4 + 2 < selectionInfo.length ? selectionInfo[index * 4 + 2] : 0; }
+
+    @Export(name = "getSelectionRectH")
+    public static int getSelectionRectH(int index) { return selectionInfo != null && index * 4 + 3 < selectionInfo.length ? selectionInfo[index * 4 + 3] : 0; }
+
+    // === Paste text (JS sends clipboard text to WASM) ===
+
+    @Export(name = "pasteText")
+    public static void pasteText(int textLen) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        String text = textLen > 0 ? new String(stringBuffer, 0, Math.min(textLen, stringBuffer.length)) : "";
+        if (!text.isEmpty()) wasmPlayer.getPlayer().onPasteText(text);
+    }
+
+    // === Copy text (JS reads selected text from WASM) ===
+
+    @Export(name = "getSelectedTextLength")
+    public static int getSelectedTextLength() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        String text = wasmPlayer.getPlayer().getSelectedText();
+        if (text == null || text.isEmpty()) return 0;
+        byte[] utf8 = text.getBytes();
+        int len = Math.min(utf8.length, stringBuffer.length);
+        System.arraycopy(utf8, 0, stringBuffer, 0, len);
+        return len;
+    }
+
+    // === Cut text (copies selected text to clipboard and deletes it) ===
+
+    @Export(name = "cutSelectedText")
+    public static int cutSelectedText() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        String text = wasmPlayer.getPlayer().cutSelectedText();
+        if (text == null || text.isEmpty()) return 0;
+        byte[] utf8 = text.getBytes();
+        int len = Math.min(utf8.length, stringBuffer.length);
+        System.arraycopy(utf8, 0, stringBuffer, 0, len);
+        return len;
+    }
+
+    // === Select all text in focused field ===
+
+    @Export(name = "selectAll")
+    public static void selectAll() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().selectAll();
+    }
+
     // === Network polling (JS reads pending requests from WASM) ===
 
     /**

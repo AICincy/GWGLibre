@@ -29,11 +29,27 @@ public interface TextRenderer {
      * Compute the pixel position of a character in text.
      * Used for Director's charPosToLoc() method.
      *
-     * @return int array {x, y} in pixels
+     * @return int array {x, y} in pixels, where y is the top of the text line (lineNum * lineHeight)
      */
     int[] charPosToLoc(String text, int charIndex,
                        String fontName, int fontSize, String fontStyle,
-                       int fixedLineSpace);
+                       int fixedLineSpace, String alignment, int fieldWidth);
+
+    /**
+     * Compute the character index at a given pixel position in text.
+     * Inverse of charPosToLoc(). Used for mouse click → caret placement.
+     *
+     * @return 0-based character index into the full text string
+     */
+    int locToCharPos(String text, int x, int y,
+                     String fontName, int fontSize, String fontStyle,
+                     int fixedLineSpace, String alignment, int fieldWidth);
+
+    /**
+     * Get the line height for text rendering.
+     */
+    int getLineHeight(String fontName, int fontSize, String fontStyle,
+                      int fixedLineSpace);
 
     /**
      * Word-wrap a single line of text into multiple lines that fit within maxWidth.

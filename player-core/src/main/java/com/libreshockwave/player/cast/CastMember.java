@@ -275,6 +275,27 @@ public class CastMember {
         this.textImageDirty = true;
     }
 
+    public TextRenderer getTextRenderer() { return textRenderer; }
+    public String getTextFont() { return textFont; }
+    public int getTextFontSize() { return textFontSize; }
+    public String getTextFontStyle() { return textFontStyle; }
+    public int getTextFixedLineSpace() { return textFixedLineSpace; }
+
+    /**
+     * Convert a local pixel coordinate to a character index in the text.
+     * Used for mouse click → caret placement.
+     */
+    public int locToCharPos(int localX, int localY, int fieldWidth) {
+        if (textRenderer == null) return 0;
+        String text = getTextContent();
+        if (text == null || text.isEmpty()) return 0;
+        return textRenderer.locToCharPos(text, localX, localY,
+                textFont, textFontSize, textFontStyle, textFixedLineSpace,
+                textAlignment, fieldWidth);
+    }
+
+    public String getTextAlignment() { return textAlignment; }
+
     public boolean isLoaded() {
         return state == State.LOADED;
     }
@@ -762,7 +783,8 @@ public class CastMember {
                 }
 
                 int[] pos = textRenderer.charPosToLoc(text, charIndex,
-                        textFont, textFontSize, textFontStyle, textFixedLineSpace);
+                        textFont, textFontSize, textFontStyle, textFixedLineSpace,
+                        textAlignment, 0);
                 yield new Datum.Point(pos[0], pos[1]);
             }
             case "count" -> {

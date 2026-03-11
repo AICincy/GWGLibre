@@ -306,24 +306,61 @@ var LibreShockwave = (function() {
 
         canvas.addEventListener('keydown', function(e) {
             if (!self._worker || !self._workerReady) return;
-            // Don't intercept browser shortcuts (Ctrl+C, Ctrl+V, etc.)
-            if (e.ctrlKey || e.metaKey) return;
+            // Handle Ctrl/Cmd shortcuts selectively
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'v' || e.key === 'V') return; // Let browser fire paste event
+                if (e.key === 'c' || e.key === 'C') {
+                    e.preventDefault();
+                    self._worker.postMessage({ type: 'getSelectedText' });
+                    return;
+                }
+                if (e.key === 'x' || e.key === 'X') {
+                    e.preventDefault();
+                    self._worker.postMessage({ type: 'cutSelectedText' });
+                    return;
+                }
+                if (e.key === 'a' || e.key === 'A') {
+                    e.preventDefault();
+                    self._worker.postMessage({ type: 'selectAll' });
+                    return;
+                }
+                return; // Block other Ctrl shortcuts from reaching player
+            }
             e.preventDefault();
+            // Map special keys to their character equivalents
+            var keyChar = e.key;
+            if (keyChar === 'Enter') keyChar = '\r';
+            else if (keyChar === 'Tab') keyChar = '\t';
+            else if (keyChar.length !== 1) keyChar = '';
             var modifiers = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
             self._worker.postMessage({
                 type: 'keyDown', keyCode: e.keyCode,
-                key: e.key.length === 1 ? e.key : '', modifiers: modifiers
+                key: keyChar, modifiers: modifiers
             });
         });
 
         canvas.addEventListener('keyup', function(e) {
             if (!self._worker || !self._workerReady) return;
             if (e.ctrlKey || e.metaKey) return;
+            // Map special keys to their character equivalents
+            var keyChar = e.key;
+            if (keyChar === 'Enter') keyChar = '\r';
+            else if (keyChar === 'Tab') keyChar = '\t';
+            else if (keyChar.length !== 1) keyChar = '';
             var modifiers = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
             self._worker.postMessage({
                 type: 'keyUp', keyCode: e.keyCode,
-                key: e.key.length === 1 ? e.key : '', modifiers: modifiers
+                key: keyChar, modifiers: modifiers
             });
+        });
+
+        // Clipboard paste support
+        document.addEventListener('paste', function(e) {
+            var text = (e.clipboardData || window.clipboardData).getData('text');
+            if (text && self._worker && self._workerReady) {
+                self._worker.postMessage({ type: 'paste', text: text });
+                e.preventDefault();
+            }
         });
     };
 
@@ -383,6 +420,11 @@ var LibreShockwave = (function() {
 
             case 'debugLog':
                 console.log(msg.msg);
+                break;
+
+            case 'selectedText':
+            case 'cutText':
+                if (msg.text) navigator.clipboard.writeText(msg.text).catch(function(){});
                 break;
 
             case 'debugHitTestResult':
@@ -988,6 +1030,11 @@ var LibreShockwave = (function() {
             this._stopCursorLoop();
         }
 
+        // Cache text caret and selection info from worker
+        this._caretInfo = result.caretInfo || null;
+        this._selectionRects = result.selectionRects || null;
+        this._cursorDirty = true;
+
         // Debug overlay during loading phase (helps diagnose mobile issues without DevTools)
         if (this._loadingPhase && this._opts.debugOverlay) {
             // Blit base frame first for debug overlay
@@ -1044,8 +1091,8 @@ var LibreShockwave = (function() {
         var base = this._baseFrame;
         var cur = this._cursorBitmap;
 
-        if (!cur) {
-            // No bitmap cursor — just blit the base frame
+        if (!cur && !this._caretInfo && !this._selectionRects) {
+            // No bitmap cursor, text caret, or selection — just blit the base frame
             this._ctx.putImageData(base, 0, 0);
             this._cursorDirty = false;
             return;
@@ -1062,37 +1109,73 @@ var LibreShockwave = (function() {
         dst.set(src);
 
         // Overlay cursor at current mouse position
-        var drawX = this._mouseX - cur.regX;
-        var drawY = this._mouseY - cur.regY;
-        var cw = cur.w;
-        var ch = cur.h;
-        var crgba = cur.rgba;
+        if (cur) {
+            var drawX = this._mouseX - cur.regX;
+            var drawY = this._mouseY - cur.regY;
+            var cw = cur.w;
+            var ch = cur.h;
+            var crgba = cur.rgba;
 
-        for (var cy = 0; cy < ch; cy++) {
-            var dstY = drawY + cy;
-            if (dstY < 0 || dstY >= h) continue;
-            for (var cx = 0; cx < cw; cx++) {
-                var dstX = drawX + cx;
-                if (dstX < 0 || dstX >= w) continue;
+            for (var cy = 0; cy < ch; cy++) {
+                var dstY = drawY + cy;
+                if (dstY < 0 || dstY >= h) continue;
+                for (var cx = 0; cx < cw; cx++) {
+                    var dstX = drawX + cx;
+                    if (dstX < 0 || dstX >= w) continue;
 
-                var srcOff = (cy * cw + cx) * 4;
-                var alpha = crgba[srcOff + 3];
-                if (alpha === 0) continue;
+                    var srcOff = (cy * cw + cx) * 4;
+                    var alpha = crgba[srcOff + 3];
+                    if (alpha === 0) continue;
 
-                var dstOff = (dstY * w + dstX) * 4;
-                if (alpha === 255) {
-                    dst[dstOff]     = crgba[srcOff];
-                    dst[dstOff + 1] = crgba[srcOff + 1];
-                    dst[dstOff + 2] = crgba[srcOff + 2];
-                    dst[dstOff + 3] = 255;
-                } else {
-                    // Alpha blend
-                    var invA = 255 - alpha;
-                    dst[dstOff]     = (crgba[srcOff]     * alpha + dst[dstOff]     * invA) / 255 | 0;
-                    dst[dstOff + 1] = (crgba[srcOff + 1] * alpha + dst[dstOff + 1] * invA) / 255 | 0;
-                    dst[dstOff + 2] = (crgba[srcOff + 2] * alpha + dst[dstOff + 2] * invA) / 255 | 0;
-                    dst[dstOff + 3] = 255;
+                    var dstOff = (dstY * w + dstX) * 4;
+                    if (alpha === 255) {
+                        dst[dstOff]     = crgba[srcOff];
+                        dst[dstOff + 1] = crgba[srcOff + 1];
+                        dst[dstOff + 2] = crgba[srcOff + 2];
+                        dst[dstOff + 3] = 255;
+                    } else {
+                        // Alpha blend
+                        var invA = 255 - alpha;
+                        dst[dstOff]     = (crgba[srcOff]     * alpha + dst[dstOff]     * invA) / 255 | 0;
+                        dst[dstOff + 1] = (crgba[srcOff + 1] * alpha + dst[dstOff + 1] * invA) / 255 | 0;
+                        dst[dstOff + 2] = (crgba[srcOff + 2] * alpha + dst[dstOff + 2] * invA) / 255 | 0;
+                        dst[dstOff + 3] = 255;
+                    }
                 }
+            }
+        }
+
+        // Draw selection highlight (semi-transparent blue rectangles)
+        var selRects = this._selectionRects;
+        if (selRects) {
+            for (var ri = 0; ri < selRects.length; ri++) {
+                var r = selRects[ri];
+                for (var ry = 0; ry < r.h; ry++) {
+                    var py = r.y + ry;
+                    if (py < 0 || py >= h) continue;
+                    for (var rx = 0; rx < r.w; rx++) {
+                        var px = r.x + rx;
+                        if (px < 0 || px >= w) continue;
+                        var off = (py * w + px) * 4;
+                        // Blend: 40% blue highlight over existing pixel
+                        dst[off]     = (dst[off]     * 153 + 51 * 102) / 255 | 0;
+                        dst[off + 1] = (dst[off + 1] * 153 + 102 * 102) / 255 | 0;
+                        dst[off + 2] = (dst[off + 2] * 153 + 204 * 102) / 255 | 0;
+                    }
+                }
+            }
+        }
+
+        // Draw text caret (1px black vertical line)
+        var caret = this._caretInfo;
+        if (caret && caret.h > 0) {
+            for (var ci = 0; ci < caret.h; ci++) {
+                var caretY = caret.y + ci;
+                if (caretY < 0 || caretY >= h) continue;
+                var caretX = caret.x;
+                if (caretX < 0 || caretX >= w) continue;
+                var off = (caretY * w + caretX) * 4;
+                dst[off] = 0; dst[off+1] = 0; dst[off+2] = 0; dst[off+3] = 255;
             }
         }
 

@@ -23,6 +23,7 @@ import com.libreshockwave.player.render.pipeline.BitmapCache;
 import com.libreshockwave.player.render.pipeline.FrameSnapshot;
 import com.libreshockwave.player.render.pipeline.RenderSprite;
 import com.libreshockwave.player.render.pipeline.SpriteBaker;
+import com.libreshockwave.player.render.output.TextRenderer;
 import com.libreshockwave.player.render.pipeline.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.datum.Datum;
@@ -1300,6 +1301,28 @@ public class Player {
         // Update rollover sprite
         int hit = HitTester.hitTest(stageRenderer, getCurrentFrame(), stageX, stageY);
         inputState.setRolloverSprite(hit);
+
+        // Drag-selection: extend selection while mouse is down over focused editable field
+        if (inputState.isMouseDown()) {
+            int focusChannel = inputState.getKeyboardFocusSprite();
+            if (focusChannel > 0) {
+                SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+                if (sprite != null) {
+                    int memberNum = sprite.getEffectiveCastMember();
+                    if (memberNum > 0) {
+                        CastMember member = castLibManager.getDynamicMember(
+                                sprite.getEffectiveCastLib(), memberNum);
+                        if (member != null && member.isEditable()) {
+                            int spriteX = sprite.getLocH() - member.getRegPointX();
+                            int spriteY = sprite.getLocV() - member.getRegPointY();
+                            int charPos = member.locToCharPos(stageX - spriteX, stageY - spriteY, sprite.getWidth());
+                            inputState.setSelEnd(charPos);
+                            inputState.resetCaretBlink();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -1475,6 +1498,11 @@ public class Player {
         if (hadEvents) {
             stageRenderer.getSpriteRegistry().bumpRevision();
         }
+
+        // Drive caret blink counter when a field is focused
+        if (inputState.getKeyboardFocusSprite() > 0) {
+            inputState.incrementCaretBlink();
+        }
     }
 
     /**
@@ -1525,7 +1553,7 @@ public class Player {
                 // Built-in Director behavior: clicking on an editable text/field sprite
                 // automatically sets keyboardFocusSprite to that sprite's channel.
                 // Clicking elsewhere clears the keyboard focus.
-                autoFocusEditableField(hitSprite);
+                autoFocusEditableField(hitSprite, event.stageX(), event.stageY());
                 if (hitSprite > 0) {
                     dispatcher.dispatchSpriteEvent(hitSprite, PlayerEvent.MOUSE_DOWN, List.of());
                 }
@@ -1578,7 +1606,7 @@ public class Player {
      * automatically sets keyboardFocusSprite to that sprite's channel.
      * Clicking on a non-editable sprite or empty stage clears focus.
      */
-    private void autoFocusEditableField(int hitChannel) {
+    private void autoFocusEditableField(int hitChannel, int stageX, int stageY) {
         if (hitChannel > 0) {
             SpriteState sprite = stageRenderer.getSpriteRegistry().get(hitChannel);
             if (sprite != null) {
@@ -1589,6 +1617,16 @@ public class Player {
                     if (member != null && member.isEditable()
                             && (member.getMemberType() == MemberType.TEXT)) {
                         inputState.setKeyboardFocusSprite(hitChannel);
+                        // Convert stage coords to local member coords and find char position
+                        // Sprite top-left = locH - regPointX (matching renderer's coordinate system)
+                        int spriteX = sprite.getLocH() - member.getRegPointX();
+                        int spriteY = sprite.getLocV() - member.getRegPointY();
+                        int localX = stageX - spriteX;
+                        int localY = stageY - spriteY;
+                        int charPos = member.locToCharPos(localX, localY, sprite.getWidth());
+                        inputState.setSelStart(charPos);
+                        inputState.setSelEnd(charPos);
+                        inputState.resetCaretBlink();
                         return;
                     }
                 }
@@ -1601,6 +1639,7 @@ public class Player {
     /**
      * Built-in Director behavior: when keyboardFocusSprite is set and the sprite's
      * member is an editable field/text, the engine inserts typed characters into member.text.
+     * Supports caret-aware editing with selStart/selEnd tracking.
      */
     private void handleEditableFieldInput(int channel, String keyChar) {
         SpriteState sprite = stageRenderer.getSpriteRegistry().get(channel);
@@ -1620,16 +1659,319 @@ public class Player {
         String text = member.getTextContent();
         if (text == null) text = "";
 
-        if (keyChar.equals("\b") || keyChar.isEmpty()) {
-            // Backspace: check the key code
-            if (inputState.getLastKeyCode() == 51) { // Mac kVK_Delete (backspace)
-                if (!text.isEmpty()) {
-                    member.setDynamicText(text.substring(0, text.length() - 1));
-                }
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        int selMin = Math.min(selStart, selEnd);
+        int selMax = Math.max(selStart, selEnd);
+        int keyCode = inputState.getLastKeyCode();
+
+        if (keyCode == 51) {
+            // Backspace
+            if (selMin != selMax) {
+                text = text.substring(0, selMin) + text.substring(selMax);
+                selStart = selEnd = selMin;
+            } else if (selStart > 0) {
+                text = text.substring(0, selStart - 1) + text.substring(selStart);
+                selStart = selEnd = selStart - 1;
             }
-        } else if (keyChar.length() == 1) {
-            member.setDynamicText(text + keyChar);
+            member.setDynamicText(text);
+        } else if (keyCode == 123) {
+            // Left arrow
+            selStart = selEnd = Math.max(0, selMin - (selMin == selMax ? 1 : 0));
+        } else if (keyCode == 124) {
+            // Right arrow
+            selStart = selEnd = Math.min(text.length(), selMax + (selMin == selMax ? 1 : 0));
+        } else if (keyCode == 36 || keyCode == 48) {
+            // Return (36) and Tab (48) — don't insert into text; let Lingo handle them
+            return;
+        } else if (keyChar != null && keyChar.length() == 1 && keyChar.charAt(0) >= ' ') {
+            // Printable character (exclude control chars like \t, \r)
+            text = text.substring(0, selMin) + keyChar + text.substring(selMax);
+            selStart = selEnd = selMin + 1;
+            member.setDynamicText(text);
+        } else {
+            // Non-printable, non-handled key — no caret reset needed
+            return;
         }
+
+        inputState.setSelStart(selStart);
+        inputState.setSelEnd(selEnd);
+        inputState.resetCaretBlink();
+    }
+
+    /**
+     * Helper: get the focused editable field's sprite, member, and top-left coordinates.
+     * Returns null if no focused editable field.
+     */
+    private Object[] getFocusedFieldInfo() {
+        int focusChannel = inputState.getKeyboardFocusSprite();
+        if (focusChannel <= 0) return null;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+        if (sprite == null) return null;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return null;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null || !member.isEditable()) return null;
+
+        return new Object[]{sprite, member};
+    }
+
+    /**
+     * Get caret rendering info for the currently focused editable field.
+     * Returns {x, y, height} in stage coordinates, or null if no caret should be shown.
+     */
+    public int[] getCaretInfo() {
+        if (!inputState.isCaretVisible()) return null;
+
+        Object[] info = getFocusedFieldInfo();
+        if (info == null) return null;
+        SpriteState sprite = (SpriteState) info[0];
+        CastMember member = (CastMember) info[1];
+
+        String text = member.getTextContent();
+        if (text == null) text = "";
+
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        // Don't show caret when there's a selection (the highlight is enough)
+        if (selStart != selEnd) return null;
+
+        TextRenderer renderer = member.getTextRenderer();
+        if (renderer == null) return null;
+
+        // charPosToLoc returns {x, y} where y = lineNum * lineHeight (line top)
+        int[] pos = renderer.charPosToLoc(text, selStart,
+                member.getTextFont(), member.getTextFontSize(),
+                member.getTextFontStyle(), member.getTextFixedLineSpace(),
+                member.getTextAlignment(), sprite.getWidth());
+        if (pos == null) return null;
+
+        int lineHeight = renderer.getLineHeight(member.getTextFont(),
+                member.getTextFontSize(), member.getTextFontStyle(),
+                member.getTextFixedLineSpace());
+
+        // Sprite top-left = locH - regPointX (matching renderer's coordinate system)
+        int spriteX = sprite.getLocH() - member.getRegPointX();
+        int spriteY = sprite.getLocV() - member.getRegPointY();
+        // pos[1] is line-top y (lineNum * lineHeight)
+        int caretX = spriteX + pos[0];
+        int caretY = spriteY + pos[1];
+
+        return new int[]{caretX, caretY, lineHeight};
+    }
+
+    /**
+     * Get selection highlight rectangles for the focused editable field.
+     * Returns array of {x, y, w, h} quads in stage coordinates, or null if no selection.
+     * Supports multi-line selections (one rect per line).
+     */
+    public int[] getSelectionInfo() {
+        Object[] info = getFocusedFieldInfo();
+        if (info == null) return null;
+        SpriteState sprite = (SpriteState) info[0];
+        CastMember member = (CastMember) info[1];
+
+        String text = member.getTextContent();
+        if (text == null) text = "";
+
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        if (selStart == selEnd) return null;
+
+        int selMin = Math.min(selStart, selEnd);
+        int selMax = Math.max(selStart, selEnd);
+
+        TextRenderer renderer = member.getTextRenderer();
+        if (renderer == null) return null;
+
+        String font = member.getTextFont();
+        int fontSize = member.getTextFontSize();
+        String fontStyle = member.getTextFontStyle();
+        int fls = member.getTextFixedLineSpace();
+
+        int lineHeight = renderer.getLineHeight(font, fontSize, fontStyle, fls);
+        // Sprite top-left = locH - regPointX (matching renderer's coordinate system)
+        int spriteX = sprite.getLocH() - member.getRegPointX();
+        int spriteY = sprite.getLocV() - member.getRegPointY();
+
+        // Get positions of selection start and end
+        String alignment = member.getTextAlignment();
+        int fieldWidth = sprite.getWidth();
+        int[] startPos = renderer.charPosToLoc(text, selMin, font, fontSize, fontStyle, fls, alignment, fieldWidth);
+        int[] endPos = renderer.charPosToLoc(text, selMax, font, fontSize, fontStyle, fls, alignment, fieldWidth);
+        if (startPos == null || endPos == null) return null;
+
+        int startLineY = startPos[1];
+        int endLineY = endPos[1];
+
+        if (startLineY == endLineY) {
+            // Single line selection
+            return new int[]{
+                spriteX + startPos[0], spriteY + startLineY,
+                endPos[0] - startPos[0], lineHeight
+            };
+        }
+
+        // Multi-line: first line from startX to sprite right edge,
+        // middle lines full width, last line from left edge to endX
+        java.util.List<int[]> rects = new java.util.ArrayList<>();
+        int spriteWidth = sprite.getWidth();
+
+        // First line
+        rects.add(new int[]{
+            spriteX + startPos[0], spriteY + startLineY,
+            spriteWidth - startPos[0], lineHeight
+        });
+        // Middle lines
+        for (int midY = startLineY + lineHeight; midY < endLineY; midY += lineHeight) {
+            rects.add(new int[]{spriteX, spriteY + midY, spriteWidth, lineHeight});
+        }
+        // Last line
+        rects.add(new int[]{spriteX, spriteY + endLineY, endPos[0], lineHeight});
+
+        int[] result = new int[rects.size() * 4];
+        for (int i = 0; i < rects.size(); i++) {
+            System.arraycopy(rects.get(i), 0, result, i * 4, 4);
+        }
+        return result;
+    }
+
+    /**
+     * Handle pasted text from clipboard. Inserts at caret position in focused editable field.
+     */
+    public void onPasteText(String pasteText) {
+        int focusChannel = inputState.getKeyboardFocusSprite();
+        if (focusChannel <= 0) return;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+        if (sprite == null) return;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null || !member.isEditable()) return;
+
+        String text = member.getTextContent();
+        if (text == null) text = "";
+
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        int selMin = Math.min(selStart, selEnd);
+        int selMax = Math.max(selStart, selEnd);
+
+        text = text.substring(0, selMin) + pasteText + text.substring(selMax);
+        int newPos = selMin + pasteText.length();
+        inputState.setSelStart(newPos);
+        inputState.setSelEnd(newPos);
+        inputState.resetCaretBlink();
+        member.setDynamicText(text);
+        stageRenderer.getSpriteRegistry().bumpRevision();
+    }
+
+    /**
+     * Get selected text from the focused editable field.
+     * If no selection (selStart == selEnd), returns the full text (Director convention).
+     */
+    public String getSelectedText() {
+        int focusChannel = inputState.getKeyboardFocusSprite();
+        if (focusChannel <= 0) return null;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+        if (sprite == null) return null;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return null;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null) return null;
+
+        String text = member.getTextContent();
+        if (text == null || text.isEmpty()) return "";
+
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        if (selStart != selEnd) {
+            int selMin = Math.min(selStart, selEnd);
+            int selMax = Math.max(selStart, selEnd);
+            return text.substring(selMin, selMax);
+        }
+        return text; // No selection → copy all
+    }
+
+    /**
+     * Cut selected text: returns the selected text and deletes it from the field.
+     * If no selection, cuts all text.
+     */
+    public String cutSelectedText() {
+        int focusChannel = inputState.getKeyboardFocusSprite();
+        if (focusChannel <= 0) return null;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+        if (sprite == null) return null;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return null;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null || !member.isEditable()) return null;
+
+        String text = member.getTextContent();
+        if (text == null || text.isEmpty()) return "";
+
+        int selStart = Math.max(0, Math.min(inputState.getSelStart(), text.length()));
+        int selEnd = Math.max(0, Math.min(inputState.getSelEnd(), text.length()));
+        int selMin = Math.min(selStart, selEnd);
+        int selMax = Math.max(selStart, selEnd);
+
+        String cutText;
+        if (selMin != selMax) {
+            cutText = text.substring(selMin, selMax);
+            text = text.substring(0, selMin) + text.substring(selMax);
+            inputState.setSelStart(selMin);
+            inputState.setSelEnd(selMin);
+        } else {
+            // No selection → cut all
+            cutText = text;
+            text = "";
+            inputState.setSelStart(0);
+            inputState.setSelEnd(0);
+        }
+        inputState.resetCaretBlink();
+        member.setDynamicText(text);
+        stageRenderer.getSpriteRegistry().bumpRevision();
+        return cutText;
+    }
+
+    /**
+     * Select all text in the focused editable field.
+     */
+    public void selectAll() {
+        int focusChannel = inputState.getKeyboardFocusSprite();
+        if (focusChannel <= 0) return;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(focusChannel);
+        if (sprite == null) return;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null) return;
+
+        String text = member.getTextContent();
+        int len = text != null ? text.length() : 0;
+        inputState.setSelStart(0);
+        inputState.setSelEnd(len);
+        inputState.resetCaretBlink();
     }
 
     /**

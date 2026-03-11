@@ -40,6 +40,9 @@ public class InputState {
     private volatile int selStart;
     private volatile int selEnd;
 
+    // Caret blink counter (incremented each tick when a field is focused)
+    private volatile int caretBlinkCounter;
+
     // Event queue — input events queued by UI thread, processed by VM thread during tick.
     // Using LinkedList instead of ConcurrentLinkedQueue for TeaVM WASM compatibility.
     // WASM is single-threaded; on desktop, queue/poll don't race on the same element.
@@ -106,6 +109,13 @@ public class InputState {
 
     public int getSelEnd() { return selEnd; }
     public void setSelEnd(int pos) { this.selEnd = pos; }
+
+    // --- Caret blink ---
+
+    public void incrementCaretBlink() { caretBlinkCounter++; }
+    public void resetCaretBlink() { caretBlinkCounter = 0; }
+    /** Visible during first half of each blink cycle (15 ticks ~ 500ms at 30fps). */
+    public boolean isCaretVisible() { return keyboardFocusSprite > 0 && (caretBlinkCounter / 15) % 2 == 0; }
 
     // --- Event queue ---
 

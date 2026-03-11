@@ -46,20 +46,24 @@ public class SimpleTextRenderer implements TextRenderer {
     @Override
     public int[] charPosToLoc(String text, int charIndex,
                               String fontName, int fontSize, String fontStyle,
-                              int fixedLineSpace) {
+                              int fixedLineSpace, String alignment, int fieldWidth) {
         // Check PFR bitmap font first
         BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
         if (pfrFont != null) {
             int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : pfrFont.getLineHeight();
             if (text == null || text.isEmpty() || charIndex <= 0) {
-                return new int[]{0, lineHeight};
+                int alignX = alignmentOffset(alignment, fieldWidth, text == null || text.isEmpty() ? 0 :
+                        pfrFont.getStringWidth(text.split("[\r\n]")[0]));
+                return new int[]{alignX, 0};
             }
             int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
             String[] lines = text.split("[\r\n]");
-            String lineSubstr = (lineInfo[0] < lines.length) ? lines[lineInfo[0]].substring(0, lineInfo[1]) : "";
+            String fullLine = (lineInfo[0] < lines.length) ? lines[lineInfo[0]] : "";
+            String lineSubstr = (lineInfo[0] < lines.length) ? fullLine.substring(0, lineInfo[1]) : "";
             int x = pfrFont.getStringWidth(lineSubstr);
-            int y = lineInfo[0] * lineHeight + pfrFont.getAscent();
-            return new int[]{x, y};
+            int alignX = alignmentOffset(alignment, fieldWidth, pfrFont.getStringWidth(fullLine));
+            int y = lineInfo[0] * lineHeight;
+            return new int[]{x + alignX, y};
         }
 
         // Fallback: approximate using built-in font metrics
@@ -67,13 +71,79 @@ public class SimpleTextRenderer implements TextRenderer {
         int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : builtinLineHeight(fontSize);
 
         if (text == null || text.isEmpty() || charIndex <= 0) {
-            return new int[]{0, lineHeight};
+            int alignX = alignmentOffset(alignment, fieldWidth, 0);
+            return new int[]{alignX, 0};
         }
 
         int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
+        String[] lines = text.split("[\r\n]");
+        String fullLine = (lineInfo[0] < lines.length) ? lines[lineInfo[0]] : "";
         int x = lineInfo[1] * charWidth;
-        int y = lineInfo[0] * lineHeight + builtinAscent(fontSize);
-        return new int[]{x, y};
+        int alignX = alignmentOffset(alignment, fieldWidth, fullLine.length() * charWidth);
+        int y = lineInfo[0] * lineHeight;
+        return new int[]{x + alignX, y};
+    }
+
+    @Override
+    public int getLineHeight(String fontName, int fontSize, String fontStyle,
+                             int fixedLineSpace) {
+        if (fixedLineSpace > 0) return fixedLineSpace;
+        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
+        if (pfrFont != null) return pfrFont.getLineHeight();
+        return builtinLineHeight(fontSize);
+    }
+
+    @Override
+    public int locToCharPos(String text, int x, int y,
+                            String fontName, int fontSize, String fontStyle,
+                            int fixedLineSpace, String alignment, int fieldWidth) {
+        if (text == null || text.isEmpty()) return 0;
+
+        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
+        String[] lines = text.split("\r", -1);
+
+        if (pfrFont != null) {
+            int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : pfrFont.getLineHeight();
+            int lineIndex = Math.max(0, Math.min(y / Math.max(1, lineHeight), lines.length - 1));
+            int charsBefore = 0;
+            for (int i = 0; i < lineIndex; i++) {
+                charsBefore += lines[i].length() + 1;
+            }
+            String line = lines[lineIndex];
+            // Subtract alignment offset to convert field-relative x to text-relative x
+            int alignX = alignmentOffset(alignment, fieldWidth, pfrFont.getStringWidth(line));
+            int localX = x - alignX;
+            int cx = 0;
+            for (int i = 0; i < line.length(); i++) {
+                int cw = pfrFont.getCharWidth(line.charAt(i));
+                if (cx + cw / 2 >= localX) return charsBefore + i;
+                cx += cw;
+            }
+            return charsBefore + line.length();
+        }
+
+        // Fallback: builtin font
+        int charWidth = builtinCharWidth(fontSize);
+        int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : builtinLineHeight(fontSize);
+        int lineIndex = Math.max(0, Math.min(y / Math.max(1, lineHeight), lines.length - 1));
+        int charsBefore = 0;
+        for (int i = 0; i < lineIndex; i++) {
+            charsBefore += lines[i].length() + 1;
+        }
+        String line = lines[lineIndex];
+        int alignX = alignmentOffset(alignment, fieldWidth, line.length() * charWidth);
+        int localX = x - alignX;
+        int charOnLine = Math.min(line.length(), (localX + charWidth / 2) / Math.max(1, charWidth));
+        return charsBefore + Math.max(0, charOnLine);
+    }
+
+    private static int alignmentOffset(String alignment, int fieldWidth, int lineWidth) {
+        if (alignment == null || fieldWidth <= 0) return 0;
+        return switch (alignment) {
+            case "center" -> (fieldWidth - lineWidth) / 2;
+            case "right" -> fieldWidth - lineWidth;
+            default -> 0;
+        };
     }
 
     /**
