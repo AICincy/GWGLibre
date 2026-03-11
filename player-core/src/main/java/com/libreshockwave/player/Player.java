@@ -1638,6 +1638,48 @@ public class Player {
     }
 
     /**
+     * Built-in Director behavior: Tab cycles keyboard focus to the next (or previous
+     * with Shift+Tab) editable text sprite, ordered by channel number.
+     */
+    private void tabToNextField(int currentChannel, boolean reverse) {
+        // Collect all editable text sprite channels, sorted
+        java.util.List<Integer> editableChannels = new java.util.ArrayList<>();
+        for (var entry : stageRenderer.getSpriteRegistry().getAll().entrySet()) {
+            int ch = entry.getKey();
+            SpriteState s = entry.getValue();
+            if (s == null) continue;
+            int memberNum = s.getEffectiveCastMember();
+            if (memberNum <= 0) continue;
+            CastMember m = castLibManager.getDynamicMember(s.getEffectiveCastLib(), memberNum);
+            if (m != null && m.isEditable() && m.getMemberType() == MemberType.TEXT) {
+                editableChannels.add(ch);
+            }
+        }
+        if (editableChannels.isEmpty()) return;
+        java.util.Collections.sort(editableChannels);
+
+        int idx = editableChannels.indexOf(currentChannel);
+        int next;
+        if (reverse) {
+            next = idx <= 0 ? editableChannels.size() - 1 : idx - 1;
+        } else {
+            next = idx < 0 || idx >= editableChannels.size() - 1 ? 0 : idx + 1;
+        }
+        int nextChannel = editableChannels.get(next);
+        inputState.setKeyboardFocusSprite(nextChannel);
+        // Select all text in the newly focused field (Director convention)
+        CastMember nextMember = castLibManager.getDynamicMember(
+                stageRenderer.getSpriteRegistry().get(nextChannel).getEffectiveCastLib(),
+                stageRenderer.getSpriteRegistry().get(nextChannel).getEffectiveCastMember());
+        if (nextMember != null) {
+            String t = nextMember.getTextContent();
+            inputState.setSelStart(0);
+            inputState.setSelEnd(t != null ? t.length() : 0);
+        }
+        inputState.resetCaretBlink();
+    }
+
+    /**
      * Built-in Director behavior: when keyboardFocusSprite is set and the sprite's
      * member is an editable field/text, the engine inserts typed characters into member.text.
      * Supports caret-aware editing with selStart/selEnd tracking.
@@ -1682,8 +1724,12 @@ public class Player {
         } else if (keyCode == 124) {
             // Right arrow
             selStart = selEnd = Math.min(text.length(), selMax + (selMin == selMax ? 1 : 0));
-        } else if (keyCode == 36 || keyCode == 48) {
-            // Return (36) and Tab (48) — don't insert into text; let Lingo handle them
+        } else if (keyCode == 48) {
+            // Tab — built-in Director behavior: cycle focus to next editable text field
+            tabToNextField(channel, inputState.isShiftDown());
+            return;
+        } else if (keyCode == 36) {
+            // Return — don't insert into text; let Lingo handle it
             return;
         } else if (keyChar != null && keyChar.length() == 1 && keyChar.charAt(0) >= ' ') {
             // Printable character (exclude control chars like \t, \r)

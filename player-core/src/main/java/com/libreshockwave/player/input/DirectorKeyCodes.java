@@ -96,14 +96,52 @@ public final class DirectorKeyCodes {
 
     /**
      * Convert a browser KeyboardEvent.keyCode to a Director Mac virtual keycode.
-     * Browser keyCodes are similar to Java VK_ codes for most keys.
+     * Explicit mapping — does NOT delegate to fromJavaKeyCode, since browser
+     * keyCodes differ from Java VK_ codes for Enter (13 vs 10) and Delete (46 vs 127).
      */
     public static int fromBrowserKeyCode(int browserKeyCode) {
-        // Handle browser keyCodes that differ from Java AWT VK_ constants
         return switch (browserKeyCode) {
-            case 13 -> 36;   // Browser Enter (13) → kVK_Return (Java VK_ENTER is 10)
-            case 46 -> 117;  // Browser Delete (46) → kVK_ForwardDelete (Java VK_DELETE is 127)
-            default -> fromJavaKeyCode(browserKeyCode);
+            // Special keys (browser keyCode → Mac kVK_*)
+            case 8 -> 51;     // Backspace → kVK_Delete
+            case 9 -> 48;     // Tab → kVK_Tab
+            case 13 -> 36;    // Enter → kVK_Return
+            case 27 -> 53;    // Escape → kVK_Escape
+            case 32 -> 49;    // Space → kVK_Space
+            case 33 -> 116;   // PageUp → kVK_PageUp
+            case 34 -> 121;   // PageDown → kVK_PageDown
+            case 35 -> 119;   // End → kVK_End
+            case 36 -> 115;   // Home → kVK_Home
+            case 37 -> 123;   // Left → kVK_LeftArrow
+            case 38 -> 126;   // Up → kVK_UpArrow
+            case 39 -> 124;   // Right → kVK_RightArrow
+            case 40 -> 125;   // Down → kVK_DownArrow
+            case 46 -> 117;   // Delete → kVK_ForwardDelete
+
+            // Function keys
+            case 112 -> 122;  // F1 → kVK_F1
+            case 113 -> 120;  // F2 → kVK_F2
+            case 114 -> 99;   // F3 → kVK_F3
+            case 115 -> 118;  // F4 → kVK_F4
+            case 116 -> 96;   // F5 → kVK_F5
+            case 117 -> 97;   // F6 → kVK_F6
+            case 118 -> 98;   // F7 → kVK_F7
+            case 119 -> 100;  // F8 → kVK_F8
+            case 120 -> 101;  // F9 → kVK_F9
+            case 121 -> 109;  // F10 → kVK_F10
+            case 122 -> 103;  // F11 → kVK_F11
+            case 123 -> 111;  // F12 → kVK_F12
+
+            default -> {
+                // Letter keys (A-Z): browser 65-90 → Mac kVK_ANSI_*
+                if (browserKeyCode >= 65 && browserKeyCode <= 90) {
+                    yield macLetterCode(browserKeyCode - 65);
+                }
+                // Digit keys (0-9): browser 48-57 → Mac kVK_ANSI_*
+                if (browserKeyCode >= 48 && browserKeyCode <= 57) {
+                    yield macDigitCode(browserKeyCode - 48);
+                }
+                yield browserKeyCode;
+            }
         };
     }
 

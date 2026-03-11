@@ -342,6 +342,7 @@ var LibreShockwave = (function() {
         canvas.addEventListener('keyup', function(e) {
             if (!self._worker || !self._workerReady) return;
             if (e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
             // Map special keys to their character equivalents
             var keyChar = e.key;
             if (keyChar === 'Enter') keyChar = '\r';
