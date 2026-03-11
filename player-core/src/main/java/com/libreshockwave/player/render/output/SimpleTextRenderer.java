@@ -135,6 +135,9 @@ public class SimpleTextRenderer implements TextRenderer {
         int[] pixels = new int[width * height];
         for (int i = 0; i < pixels.length; i++) pixels[i] = bgColor;
 
+        // Director's MacText line structure: leading + ascent + descent.
+        // Leading goes above the text within each line.
+        int leading = Math.max(0, lineHeight - font.getLineHeight());
         int y = topSpacing;
         for (String line : lines) {
             if (y >= height) break;
@@ -144,16 +147,17 @@ public class SimpleTextRenderer implements TextRenderer {
                 case "right" -> x = width - font.getStringWidth(line);
             }
             int lineStartX = x;
+            int glyphY = y + leading;
             for (int i = 0; i < line.length(); i++) {
                 char ch = line.charAt(i);
-                font.drawChar(ch, pixels, width, height, x, y, textColor);
+                font.drawChar(ch, pixels, width, height, x, glyphY, textColor);
                 if (syntheticBold) {
-                    font.drawChar(ch, pixels, width, height, x + 1, y, textColor);
+                    font.drawChar(ch, pixels, width, height, x + 1, glyphY, textColor);
                 }
                 x += font.getCharWidth(ch);
             }
             if (underline && line.length() > 0) {
-                drawUnderline(pixels, width, height, y + font.getLineHeight() - 1, lineStartX, x, textColor);
+                drawUnderline(pixels, width, height, glyphY + font.getLineHeight() - 1, lineStartX, x, textColor);
             }
             y += lineHeight;
         }
