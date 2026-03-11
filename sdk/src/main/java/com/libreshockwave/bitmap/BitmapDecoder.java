@@ -183,16 +183,20 @@ public class BitmapDecoder {
     /**
      * Decode a 4-bit bitmap (16 colors).
      * Each byte contains two 4-bit palette indices.
+     * Nibble values (0-15) are scaled to 0-255 for palette lookup,
+     * matching Director's convention where 0=white and 15=black
+     * in grayscale palettes (same approach as decode2Bit).
      */
     public static Bitmap decode4Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 4);
 
-        // Expand 4-bit data: each byte → 2 pixel values (0-15 palette indices)
+        // Expand 4-bit data: each byte → 2 pixel values, scaled to 0-255 palette indices.
+        // Director 4-bit bitmaps use 256-color palettes; nibble 0 → index 0, nibble 15 → index 255.
         byte[] expanded = new byte[data.length * 2];
         for (int i = 0; i < data.length; i++) {
             int val = data[i] & 0xFF;
-            expanded[i * 2] = (byte) ((val & 0xF0) >> 4);
-            expanded[i * 2 + 1] = (byte) (val & 0x0F);
+            expanded[i * 2] = (byte) Math.round(((val & 0xF0) >> 4) / 15.0f * 255.0f);
+            expanded[i * 2 + 1] = (byte) Math.round((val & 0x0F) / 15.0f * 255.0f);
         }
 
         for (int y = 0; y < height; y++) {
