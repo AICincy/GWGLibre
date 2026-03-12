@@ -188,7 +188,7 @@ public class StageRenderer {
 
         // Apply registration point offset (scaled for stretched sprites per ScummVM behavior)
         if (member != null) {
-            int[] reg = scaledRegPoint(member, width, height);
+            int[] reg = scaledRegPoint(member, width, height, x, y);
             x -= reg[0];
             y -= reg[1];
         }
@@ -282,7 +282,7 @@ public class StageRenderer {
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
             // Apply registration point offset (scaled for stretched sprites)
-            int[] reg = scaledRegPoint(member, width, height);
+            int[] reg = scaledRegPoint(member, width, height, x, y);
             x -= reg[0];
             y -= reg[1];
             // Fallback auto-size: if sprite still has 0x0 dimensions, derive from member
@@ -370,7 +370,8 @@ public class StageRenderer {
      * Director (confirmed via ScummVM) scales regPoint by spriteSize/bitmapSize for stretched sprites.
      * @return int array {scaledRegX, scaledRegY}
      */
-    private int[] scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight) {
+    private int[] scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight,
+                                  int posX, int posY) {
         if (member.isBitmap() && member.specificData() != null && member.specificData().length >= 10) {
             var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
             // ScummVM's getRegistrationOffset() uses bitmap-local coordinates
@@ -386,6 +387,14 @@ public class StageRenderer {
                 regY = regY * spriteHeight / bmpH;
             }
             return new int[]{ regX, regY };
+        }
+        // Film loop: the specificData stores a bounding rect in stage coordinates.
+        // The regPoint maps the sprite's locH/locV to the rect's origin so the
+        // film loop renders at its original stage position.
+        if (member.memberType() == MemberType.FILM_LOOP
+                && member.specificData() != null && member.specificData().length >= 8) {
+            var fi = com.libreshockwave.cast.FilmLoopInfo.parse(member.specificData());
+            return new int[]{ posX - fi.rectLeft(), posY - fi.rectTop() };
         }
         return new int[]{ member.regPointX(), member.regPointY() };
     }

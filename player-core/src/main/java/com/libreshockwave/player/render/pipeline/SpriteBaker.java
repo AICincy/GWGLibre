@@ -365,15 +365,135 @@ public class SpriteBaker {
     }
 
     /**
-     * Bake a FILM_LOOP sprite: render the first frame of the film loop.
-     * Film loops contain embedded score data with sub-sprites; full animation
-     * playback is not yet supported. Returns null if the embedded data cannot
-     * be decoded.
+     * Bake a FILM_LOOP sprite: render the last frame of the film loop.
+     * Film loops contain embedded score data with sub-sprites positioned in
+     * stage coordinates. The specificData stores a bounding rect that defines
+     * the film loop's coordinate space.
      */
     private Bitmap bakeFilmLoop(RenderSprite sprite) {
-        // FilmLoop embedded score data parsing not yet implemented
-        // TODO: Parse the film loop's embedded mini-score and composite sub-sprites
-        return null;
+        var castMember = sprite.getCastMember();
+        if (castMember == null || castMember.file() == null) return null;
+
+        var file = castMember.file();
+
+        // Look up the embedded score chunk via KEY* table
+        ScoreChunk embeddedScore = file.getScoreForMember(castMember);
+        if (embeddedScore == null || embeddedScore.frameData() == null) return null;
+
+        var frameData = embeddedScore.frameData();
+        if (frameData.frameChannelData().isEmpty()) return null;
+
+        // Parse film loop rect from specificData
+        var filmInfo = com.libreshockwave.cast.FilmLoopInfo.parse(castMember.specificData());
+        int loopW = filmInfo.width() > 0 ? filmInfo.width() : sprite.getWidth();
+        int loopH = filmInfo.height() > 0 ? filmInfo.height() : sprite.getHeight();
+        if (loopW <= 0 || loopH <= 0) return null;
+
+        // Rect origin — sub-sprites use absolute stage coords, offset by this
+        int rectLeft = filmInfo.rectLeft();
+        int rectTop = filmInfo.rectTop();
+
+        // Use the last frame for a complete view of the animation
+        int lastFrame = frameData.header().frameCount() - 1;
+
+        // Create output bitmap filled with transparent
+        int[] outPixels = new int[loopW * loopH];
+
+        // Collect sub-sprites for the target frame
+        var subSprites = new ArrayList<ScoreChunk.FrameChannelEntry>();
+        for (var entry : frameData.frameChannelData()) {
+            if (entry.frameIndex().value() == lastFrame && !entry.data().isEmpty()) {
+                subSprites.add(entry);
+            }
+        }
+        subSprites.sort((a, b) -> Integer.compare(
+                a.channelIndex().value(), b.channelIndex().value()));
+
+        for (var entry : subSprites) {
+            var data = entry.data();
+            if (data.spriteType() == 0 || data.castMember() <= 0) continue;
+
+            // Look up sub-sprite's cast member from the same file.
+            // Film loop embedded scores use castLib=65535 (0xFFFF) or 0 as "internal cast" sentinel.
+            var subMember = resolveFilmLoopMember(file, data.castLib(), data.castMember());
+            if (subMember == null) continue;
+
+            // Decode the sub-sprite's bitmap via the cache
+            Bitmap subBitmap = bitmapCache.getProcessed(subMember, data.ink(),
+                    data.resolvedBackColor(), player, null);
+            if (subBitmap == null || subBitmap.getPixels() == null) continue;
+
+            // Sub-sprite stage position minus its registration point
+            int sx = data.posX();
+            int sy = data.posY();
+            if (subMember.isBitmap() && subMember.specificData() != null
+                    && subMember.specificData().length >= 10) {
+                var bi = com.libreshockwave.cast.BitmapInfo.parse(subMember.specificData());
+                sx -= bi.regXLocal();
+                sy -= bi.regYLocal();
+            } else {
+                sx -= subMember.regPointX();
+                sy -= subMember.regPointY();
+            }
+
+            // Map from stage coordinates to film loop bitmap coordinates
+            sx -= rectLeft;
+            sy -= rectTop;
+
+            // Blit sub-sprite onto the film loop output
+            blitOnto(outPixels, loopW, loopH, subBitmap, sx, sy);
+        }
+
+        return new Bitmap(loopW, loopH, 32, outPixels);
+    }
+
+    /** Resolve a cast member from a film loop's embedded score. */
+    private com.libreshockwave.chunks.CastMemberChunk resolveFilmLoopMember(
+            DirectorFile file, int castLib, int memberNum) {
+        var member = file.getCastMemberByNumber(castLib, memberNum);
+        if (member == null && (castLib == 0xFFFF || castLib == 0)) {
+            member = file.getCastMemberByNumber(1, memberNum);
+        }
+        if (member == null) {
+            member = file.getCastMemberByIndex(castLib, memberNum);
+            if (member == null && (castLib == 0xFFFF || castLib == 0)) {
+                member = file.getCastMemberByIndex(1, memberNum);
+            }
+        }
+        return member;
+    }
+
+    /** Blit a source bitmap onto a destination pixel array with alpha compositing. */
+    private static void blitOnto(int[] dst, int dstW, int dstH, Bitmap src, int ox, int oy) {
+        int[] srcPixels = src.getPixels();
+        int srcW = src.getWidth();
+        int srcH = src.getHeight();
+        for (int py = 0; py < srcH; py++) {
+            int dy = oy + py;
+            if (dy < 0 || dy >= dstH) continue;
+            for (int px = 0; px < srcW; px++) {
+                int dx = ox + px;
+                if (dx < 0 || dx >= dstW) continue;
+                int s = srcPixels[py * srcW + px];
+                int sa = (s >> 24) & 0xFF;
+                if (sa == 0) continue;
+                int dstIdx = dy * dstW + dx;
+                if (sa >= 255) {
+                    dst[dstIdx] = s;
+                } else {
+                    int d = dst[dstIdx];
+                    int da = (d >> 24) & 0xFF;
+                    int inv = 255 - sa;
+                    int oa = sa + (da * inv / 255);
+                    if (oa > 0) {
+                        int or_ = (((s >> 16) & 0xFF) * sa + ((d >> 16) & 0xFF) * da * inv / 255) / oa;
+                        int og = (((s >> 8) & 0xFF) * sa + ((d >> 8) & 0xFF) * da * inv / 255) / oa;
+                        int ob = ((s & 0xFF) * sa + (d & 0xFF) * da * inv / 255) / oa;
+                        dst[dstIdx] = (oa << 24) | (or_ << 16) | (og << 8) | ob;
+                    }
+                }
+            }
+        }
     }
 
     /**

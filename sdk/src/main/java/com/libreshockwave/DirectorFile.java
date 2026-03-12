@@ -269,6 +269,24 @@ public class DirectorFile {
     }
 
     /**
+     * Look up embedded score (VWSC/SCVW) chunk for a film loop cast member via KEY* table.
+     * Film loops contain their own mini-score with sub-sprites.
+     */
+    public ScoreChunk getScoreForMember(CastMemberChunk member) {
+        if (keyTable == null) return null;
+        for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+            String fourcc = entry.fourccString().trim();
+            if (fourcc.equals("VWSC") || fourcc.equals("SCVW")) {
+                Chunk chunk = getChunk(entry.sectionId());
+                if (chunk instanceof ScoreChunk sc) {
+                    return sc;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Look up STXT (styled text) chunk for a cast member via KEY* table.
      */
     public com.libreshockwave.chunks.TextChunk getTextForMember(CastMemberChunk member) {
