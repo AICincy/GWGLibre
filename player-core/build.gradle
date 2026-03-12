@@ -360,3 +360,25 @@ tasks.register('runHabboCreateUserTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runMobilesDiscoTest', JavaExec) {
+    group = 'verification'
+    description = 'Mobiles Disco DCR: advance from splash to login, render screenshot, pixel diff'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.MobilesDiscoTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.register('runMobilesDiscoCastDiag', JavaExec) {
+    group = 'verification'
+    description = 'Diagnostic: CASp mapping and member lookup for Mobiles Disco'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.MobilesDiscoCastDiag'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

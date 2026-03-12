@@ -517,6 +517,24 @@ public class DirectorFile {
     }
 
     /**
+     * Get the correct ScriptNamesChunk (Lnam) for a given ScriptChunk.
+     * Each Lctx has its own lnamSectionId; this finds which Lctx owns the script
+     * and returns the associated Lnam. Falls back to the default/global Lnam.
+     */
+    public ScriptNamesChunk getScriptNamesForScript(ScriptChunk script) {
+        if (script == null) return scriptNames;
+        for (ScriptContextChunk ctx : allScriptContexts) {
+            for (var entry : ctx.entries()) {
+                if (entry.id().equals(script.id())) {
+                    ScriptNamesChunk names = scriptNamesById.get(ctx.lnamSectionId());
+                    return names != null ? names : scriptNames;
+                }
+            }
+        }
+        return scriptNames;
+    }
+
+    /**
      * Get list of external cast file paths referenced by this movie.
      * Returns the raw paths as stored in the cast list.
      */

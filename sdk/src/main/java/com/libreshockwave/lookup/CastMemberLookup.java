@@ -6,7 +6,9 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ConfigChunk;
 import com.libreshockwave.id.ChunkId;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Provides cast member lookup functionality.
@@ -19,12 +21,53 @@ public final class CastMemberLookup {
     private final CastListChunk castList;
     private final ConfigChunk config;
 
+    // Maps castLib number (1+) to the correct CASp chunk
+    private final Map<Integer, CastChunk> castLibToCASp;
+
     public CastMemberLookup(List<CastChunk> casts, List<CastMemberChunk> castMembers,
                             CastListChunk castList, ConfigChunk config) {
         this.casts = casts;
         this.castMembers = castMembers;
         this.castList = castList;
         this.config = config;
+        this.castLibToCASp = buildCastLibMapping();
+    }
+
+    /**
+     * Build mapping from castLib number to CASp chunk.
+     * CASp chunks in Afterburner files may not be ordered by cast library.
+     * Match them to MCsL entries by member count.
+     */
+    private Map<Integer, CastChunk> buildCastLibMapping() {
+        Map<Integer, CastChunk> mapping = new HashMap<>();
+
+        if (castList == null || castList.entries().isEmpty()) {
+            // No MCsL: assume positional ordering
+            for (int i = 0; i < casts.size(); i++) {
+                mapping.put(i + 1, casts.get(i));
+            }
+            return mapping;
+        }
+
+        boolean[] assigned = new boolean[casts.size()];
+
+        for (int libIdx = 0; libIdx < castList.entries().size(); libIdx++) {
+            CastListChunk.CastListEntry entry = castList.entries().get(libIdx);
+            int expectedCount = entry.memberCount();
+            int castLibNum = libIdx + 1;
+
+            for (int ci = 0; ci < casts.size(); ci++) {
+                if (assigned[ci]) continue;
+                CastChunk cast = casts.get(ci);
+                if (cast.memberIds().size() == expectedCount) {
+                    mapping.put(castLibNum, cast);
+                    assigned[ci] = true;
+                    break;
+                }
+            }
+        }
+
+        return mapping;
     }
 
     /**
@@ -74,13 +117,16 @@ public final class CastMemberLookup {
      * @return The cast member, or null if not found
      */
     public CastMemberChunk getByNumber(int castLib, int memberNumber) {
-        // Get the cast library
-        int libIndex = Math.max(0, castLib - 1);
-        if (libIndex >= casts.size()) {
-            return null;
+        // Find the CASp chunk for this cast library using the mapping
+        CastChunk cast = castLibToCASp.get(castLib);
+        if (cast == null) {
+            // Fallback: try positional ordering
+            int libIndex = Math.max(0, castLib - 1);
+            if (libIndex >= casts.size()) {
+                return null;
+            }
+            cast = casts.get(libIndex);
         }
-
-        CastChunk cast = casts.get(libIndex);
         if (cast == null) {
             return null;
         }

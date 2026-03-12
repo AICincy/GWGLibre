@@ -178,8 +178,12 @@ public class StageRenderer {
         int height = pos[4];
         boolean visible = state.isVisible();
 
-        // Get cast member
-        CastMemberChunk member = file.getCastMemberByIndex(data.castLib(), data.castMember());
+        // Get cast member — use CASp-based lookup for internal casts,
+        // fall back to CastLibManager for external casts
+        CastMemberChunk member = file.getCastMemberByNumber(data.castLib(), data.castMember());
+        if (member == null && castLibManager != null) {
+            member = castLibManager.getCastMember(data.castLib(), data.castMember());
+        }
 
         // Apply registration point offset (scaled for stretched sprites per ScummVM behavior)
         if (member != null) {

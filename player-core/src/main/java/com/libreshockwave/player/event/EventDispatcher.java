@@ -209,12 +209,16 @@ public class EventDispatcher {
     /**
      * Dispatch a handler to all movie scripts in a given script collection.
      */
-    private void dispatchToMovieScriptsIn(Iterable<ScriptChunk> scripts, ScriptNamesChunk names,
+    private void dispatchToMovieScriptsIn(Iterable<ScriptChunk> scripts, ScriptNamesChunk defaultNames,
                                            String handlerName, List<Datum> args) {
         for (ScriptChunk script : scripts) {
             if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
                 continue;
             }
+            // Use per-script Lnam when available, fall back to provided default
+            ScriptNamesChunk names = script.file() != null
+                ? script.file().getScriptNamesForScript(script) : defaultNames;
+            if (names == null) names = defaultNames;
             ScriptChunk.Handler handler = script.findHandler(handlerName, names);
             if (handler != null) {
                 try {
@@ -237,8 +241,8 @@ public class EventDispatcher {
         if (instance == null || instance.getScript() == null) return;
 
         ScriptChunk script = instance.getScript();
-        // Use the script's own file's names (may be an external cast, not the main DCR)
-        ScriptNamesChunk names = script.file() != null ? script.file().getScriptNames() : null;
+        // Use the per-script Lnam (each Lctx has its own lnamSectionId)
+        ScriptNamesChunk names = script.file() != null ? script.file().getScriptNamesForScript(script) : null;
         if (names == null) {
             return;
         }

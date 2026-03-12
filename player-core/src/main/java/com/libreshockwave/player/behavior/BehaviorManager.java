@@ -4,6 +4,8 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.player.cast.CastLib;
+import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.score.ScoreBehaviorRef;
 
 import java.util.*;
@@ -15,6 +17,7 @@ import java.util.*;
 public class BehaviorManager {
 
     private final DirectorFile file;
+    private CastLibManager castLibManager;
 
     // Behavior instances by ID
     private final Map<Integer, BehaviorInstance> instancesById;
@@ -33,6 +36,10 @@ public class BehaviorManager {
         this.file = file;
         this.instancesById = new HashMap<>();
         this.instancesByChannel = new HashMap<>();
+    }
+
+    public void setCastLibManager(CastLibManager castLibManager) {
+        this.castLibManager = castLibManager;
     }
 
     public void setDebugEnabled(boolean enabled) {
@@ -188,31 +195,39 @@ public class BehaviorManager {
 
     // Helper methods
 
-    private ScriptChunk findScript(int castLib, int castMember) {
-        // Find the cast member by number (not index)
-        // The score stores member numbers directly, not indices
-        CastMemberChunk member = file.getCastMemberByNumber(castLib, castMember);
-        if (member == null || !member.isScript()) {
-            return null;
-        }
-
-        // Find the script chunk for this member by scriptId
-        int scriptId = member.scriptId();
-        if (debugEnabled) {
-            System.out.println("[BehaviorManager] Looking for script id=" + scriptId + " (member name: " + member.name() + ")");
-        }
-
-        // Use the Lctx-aware lookup
-        ScriptChunk script = file.getScriptByContextId(scriptId);
-        if (script != null) {
+    private ScriptChunk findScript(int castLibNum, int castMember) {
+        // Try main DCR first
+        CastMemberChunk member = file.getCastMemberByNumber(castLibNum, castMember);
+        if (member != null && member.isScript()) {
+            int scriptId = member.scriptId();
             if (debugEnabled) {
-                System.out.println("[BehaviorManager] Found script \"" + member.name() + "\" #" + script.id() + " type=" + script.getScriptType());
+                System.out.println("[BehaviorManager] Looking for script id=" + scriptId + " (member name: " + member.name() + ")");
             }
-            return script;
+            ScriptChunk script = file.getScriptByContextId(scriptId);
+            if (script != null) {
+                if (debugEnabled) {
+                    System.out.println("[BehaviorManager] Found script \"" + member.name() + "\" #" + script.id() + " type=" + script.getScriptType());
+                }
+                return script;
+            }
+        }
+
+        // Try external casts via CastLibManager
+        if (castLibManager != null) {
+            CastLib castLib = castLibManager.getCastLibs().get(castLibNum);
+            if (castLib != null && castLib.isLoaded()) {
+                ScriptChunk script = castLib.getScript(castMember);
+                if (script != null) {
+                    if (debugEnabled) {
+                        System.out.println("[BehaviorManager] Found script in external cast lib " + castLibNum + " member=" + castMember);
+                    }
+                    return script;
+                }
+            }
         }
 
         if (debugEnabled) {
-            System.err.println("[BehaviorManager] No script found for scriptId=" + scriptId);
+            System.err.println("[BehaviorManager] No script found for castLib=" + castLibNum + " member=" + castMember);
         }
         return null;
     }

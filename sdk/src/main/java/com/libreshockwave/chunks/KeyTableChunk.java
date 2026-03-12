@@ -5,7 +5,6 @@ import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -85,8 +84,8 @@ public record KeyTableChunk(
     }
 
     public static KeyTableChunk read(DirectorFile vm, BinaryReader reader, ChunkId id, int version) {
-        ByteOrder originalOrder = reader.getOrder();
-        reader.setOrder(ByteOrder.LITTLE_ENDIAN);
+        // KEY* uses the file's byte order (ScummVM reads it with fileEndianness=true).
+        // Do NOT force LITTLE_ENDIAN — Afterburner big-endian files store KEY* data in BE.
 
         int headerSize = reader.readI16() & 0xFFFF;
         int entrySize = reader.readI16() & 0xFFFF;
@@ -112,8 +111,6 @@ public record KeyTableChunk(
             byOwner.computeIfAbsent(castId, k -> new ArrayList<>()).add(entry);
             ownerBySection.put(sectionId, castId);
         }
-
-        reader.setOrder(originalOrder);
 
         return new KeyTableChunk(vm, id, entries, byOwner, ownerBySection);
     }

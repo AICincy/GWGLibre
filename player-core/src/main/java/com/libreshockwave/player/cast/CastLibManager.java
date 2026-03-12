@@ -573,12 +573,14 @@ public class CastLibManager implements CastLibProvider {
                 continue;
             }
 
-            var scriptNames = castLib.getScriptNames();
-            if (scriptNames == null) {
+            var defaultNames = castLib.getScriptNames();
+            if (defaultNames == null) {
                 continue;
             }
 
             for (var script : castLib.getAllScripts()) {
+                // Use per-script Lnam (each Lctx has its own lnamSectionId)
+                var scriptNames = getPerScriptNames(script, defaultNames);
                 var handler = script.findHandler(handlerName, scriptNames);
                 if (handler != null) {
                     return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
@@ -617,14 +619,15 @@ public class CastLibManager implements CastLibProvider {
                 continue;
             }
 
-            var scriptNames = castLib.getScriptNames();
-            if (scriptNames == null) {
+            var defaultNames = castLib.getScriptNames();
+            if (defaultNames == null) {
                 continue;
             }
 
             // Look up script by member number
             var script = castLib.getScript(memberNumber);
             if (script != null) {
+                var scriptNames = getPerScriptNames(script, defaultNames);
                 var handler = script.findHandler(handlerName, scriptNames);
                 if (handler != null) {
                     return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
@@ -649,13 +652,14 @@ public class CastLibManager implements CastLibProvider {
             return null;
         }
 
-        var scriptNames = castLib.getScriptNames();
-        if (scriptNames == null) {
+        var defaultNames = castLib.getScriptNames();
+        if (defaultNames == null) {
             return null;
         }
 
         var script = castLib.getScript(memberNumber);
         if (script != null) {
+            var scriptNames = getPerScriptNames(script, defaultNames);
             var handler = script.findHandler(handlerName, scriptNames);
             if (handler != null) {
                 return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
@@ -689,7 +693,7 @@ public class CastLibManager implements CastLibProvider {
                 if (!castLib.isLoaded()) continue;
                 var script = castLib.getScript(memberNumber);
                 if (script != null && script.hasProperties()) {
-                    var scriptNames = castLib.getScriptNames();
+                    var scriptNames = getPerScriptNames(script, castLib.getScriptNames());
                     return script.getPropertyNames(scriptNames);
                 }
             }
@@ -706,7 +710,20 @@ public class CastLibManager implements CastLibProvider {
             return java.util.List.of();
         }
 
-        var scriptNames = castLib.getScriptNames();
+        var scriptNames = getPerScriptNames(script, castLib.getScriptNames());
         return script.getPropertyNames(scriptNames);
+    }
+
+    /**
+     * Get the per-script Lnam for a script, falling back to a default.
+     */
+    private static com.libreshockwave.chunks.ScriptNamesChunk getPerScriptNames(
+            com.libreshockwave.chunks.ScriptChunk script,
+            com.libreshockwave.chunks.ScriptNamesChunk defaultNames) {
+        if (script.file() != null) {
+            var names = script.file().getScriptNamesForScript(script);
+            if (names != null) return names;
+        }
+        return defaultNames;
     }
 }
