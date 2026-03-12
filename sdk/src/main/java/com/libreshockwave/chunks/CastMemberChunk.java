@@ -72,35 +72,45 @@ public record CastMemberChunk(
         int regPointX = 0;
         int regPointY = 0;
 
-        if (version >= 1024) {
-            // Director 6+
+        byte[] info = new byte[0];
+        byte[] specificData = new byte[0];
+
+        if (version >= 0x4B1) {
+            // Director 5+ (D5/D6/D7/...): type(u32), infoLen(u32), specificDataLen(u32), info, specificData
             int type = reader.readI32();
             infoLen = reader.readI32();
             dataLen = reader.readI32();
             memberType = MemberType.fromCode(type);
+
+            if (infoLen > 0 && reader.bytesLeft() >= infoLen) {
+                info = reader.readBytes(infoLen);
+            }
+            if (dataLen > 0 && reader.bytesLeft() >= dataLen) {
+                specificData = reader.readBytes(dataLen);
+            }
         } else {
-            // Director 5 and earlier
-            int dataSize = reader.readI16() & 0xFFFF;
-            int totalSize = reader.readI32();
+            // Director 4 (D4): specificDataLen(u16), infoLen(u32), type(u8), [flags(u8)], specificData, info
+            int specificDataLen = reader.readI16() & 0xFFFF;
+            infoLen = reader.readI32();
+
+            // type and flags bytes are part of specificData
             int type = reader.readU8();
             memberType = MemberType.fromCode(type);
-            infoLen = dataSize;
-            dataLen = totalSize - dataSize;
+            int specificDataLeft = specificDataLen - 1;
 
-            if (reader.bytesLeft() > 0) {
-                reader.skip(1); // flags
+            if (specificDataLeft > 0 && reader.bytesLeft() > 0) {
+                reader.skip(1); // flags byte
+                specificDataLeft -= 1;
             }
-        }
 
-        byte[] info = new byte[0];
-        byte[] specificData = new byte[0];
-
-        if (infoLen > 0 && reader.bytesLeft() >= infoLen) {
-            info = reader.readBytes(infoLen);
-        }
-
-        if (dataLen > 0 && reader.bytesLeft() >= dataLen) {
-            specificData = reader.readBytes(dataLen);
+            // Read remaining specificData, then info
+            dataLen = specificDataLeft;
+            if (specificDataLeft > 0 && reader.bytesLeft() >= specificDataLeft) {
+                specificData = reader.readBytes(specificDataLeft);
+            }
+            if (infoLen > 0 && reader.bytesLeft() >= infoLen) {
+                info = reader.readBytes(infoLen);
+            }
         }
 
         // Parse regPoint from BitmapInfo for bitmap members

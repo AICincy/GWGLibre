@@ -678,17 +678,36 @@ public class DirectorFile {
         ChunkType container = ChunkType.fromFourCC(containerFourCC);
 
         ByteOrder endian;
+        boolean isRIFF = false;
         if (container == ChunkType.RIFX) {
             endian = ByteOrder.BIG_ENDIAN;
         } else if (container == ChunkType.XFIR) {
             endian = ByteOrder.LITTLE_ENDIAN;
+        } else if (container == ChunkType.RIFF) {
+            // D3 Windows RIFF format: tags are big-endian, data is little-endian
+            endian = ByteOrder.LITTLE_ENDIAN;
+            isRIFF = true;
+        } else if (container == ChunkType.FFIR) {
+            endian = ByteOrder.LITTLE_ENDIAN;
+            isRIFF = true;
         } else {
-            throw new IOException("Not a valid Director file: expected RIFX or XFIR, got " +
+            throw new IOException("Not a valid Director file: expected RIFX/XFIR/RIFF, got " +
                 BinaryReader.fourCCToString(containerFourCC));
         }
 
         reader.setOrder(endian);
         int fileSize = reader.readI32();
+
+        if (isRIFF) {
+            // D3 RIFF format: RIFF + size + RMMP, then CFTC chunk table
+            int rmmpFourCC = reader.readFourCC();
+            ChunkType rmmpType = ChunkType.fromFourCC(rmmpFourCC);
+            if (rmmpType != ChunkType.RMMP) {
+                throw new IOException("Expected RMMP marker in RIFF file, got " +
+                    BinaryReader.fourCCToString(rmmpFourCC));
+            }
+            return loadRIFF(reader, endian);
+        }
 
         // Movie type codec is stored as a byte-swapped integer in little-endian files,
         // so read using the file's byte order (matches Rust: read_u32() after endian set)
@@ -696,7 +715,6 @@ public class DirectorFile {
         ChunkType movieType = ChunkType.fromFourCC(movieFourCC);
 
         boolean afterburner = movieType.isAfterburner();
-        int version = 0;
 
         DirectorFile file;
 
@@ -709,15 +727,105 @@ public class DirectorFile {
         return file;
     }
 
+    /**
+     * Load a D3 Windows RIFF file. Uses CFTC chunk table instead of imap/mmap.
+     * See ScummVM RIFFArchive::openStream() in archive.cpp.
+     */
+    private static DirectorFile loadRIFF(BinaryReader reader, ByteOrder endian) throws IOException {
+        DirectorFile file = new DirectorFile(endian, false, 0, ChunkType.MV93);
+
+        // Read CFTC chunk (chunk format table of contents)
+        int cftcFourCC = reader.readFourCC();
+        if (BinaryReader.fourCCToString(cftcFourCC).equals("CFTC") == false) {
+            throw new IOException("Expected CFTC in RIFF file, got " + BinaryReader.fourCCToString(cftcFourCC));
+        }
+
+        int cftcSize = reader.readI32();
+        int cftcStart = reader.getPosition();
+        reader.skip(4); // chunk number, always 0
+
+        int chunkIndex = 0;
+        while (reader.getPosition() < cftcStart + cftcSize) {
+            // RIFF entries: tag(4, big-endian), size(4, LE), id(4, LE), offset(4, LE)
+            int tag = reader.readFourCC(); // tags are big-endian in RIFF
+            if (tag == 0) break;
+
+            int size = reader.readI32();
+            int id = reader.readI32();
+            int offset = reader.readI32();
+
+            // Skip past the resource name at the offset
+            // Resource layout: FourCC(4) + size(4) + id(4) + name_len(1) + name + data
+            int savedPos = reader.getPosition();
+            int resHeaderOffset = offset + 12; // skip FourCC + size + id
+            if (resHeaderOffset < reader.bytesLeft() + reader.getPosition()) {
+                reader.setPosition(resHeaderOffset);
+                int nameLen = reader.readU8();
+                int dataOffset = resHeaderOffset + 1 + nameLen;
+                // Align to word boundary if needed
+                if (dataOffset % 2 != 0) dataOffset++;
+                int dataSize = size - 4 - 1 - nameLen; // size excludes FourCC+size, includes id
+                if (dataSize < 0) dataSize = size;
+
+                ChunkId chunkId = new ChunkId(chunkIndex);
+                file.chunkInfo.put(chunkId, new ChunkInfo(chunkId, tag, dataOffset, dataSize, dataSize));
+                chunkIndex++;
+            }
+
+            reader.setPosition(savedPos);
+        }
+
+        // Detect version from config chunk
+        for (ChunkInfo info : file.chunkInfo.values()) {
+            ChunkType type = info.type();
+            if (type == ChunkType.DRCF || type == ChunkType.VWCF) {
+                BinaryReader chunkReader = reader.sliceReaderAt(info.offset, info.length);
+                file.config = ConfigChunk.read(file, chunkReader, info.id(), 0, endian);
+                break;
+            }
+        }
+
+        // Parse all chunks
+        int version = file.config != null ? file.config.directorVersion() : 0;
+        boolean capitalX = false;
+
+        for (ChunkInfo info : file.chunkInfo.values()) {
+            try {
+                BinaryReader r = reader.sliceReaderAt(info.offset, info.length);
+                Chunk chunk = file.parseChunkFromReader(r, info, version, capitalX);
+                if (chunk != null) {
+                    file.chunks.put(info.id(), chunk);
+                    file.categorizeChunk(chunk);
+
+                    if (chunk instanceof ScriptContextChunk) {
+                        capitalX = info.fourcc() == BinaryReader.fourCC("LctX");
+                        file.capitalX = capitalX;
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to parse RIFF chunk " + info.type() + ": " + e.getMessage());
+            }
+        }
+
+        file.dataStore = reader.getData();
+        return file;
+    }
+
     private static DirectorFile loadRIFX(BinaryReader reader, ByteOrder endian, ChunkType movieType) throws IOException {
         DirectorFile file = new DirectorFile(endian, false, 0, movieType);
 
         // Read imap chunk to find mmap - FourCCs are always 4-byte ASCII (read as big-endian int)
         int imapFourCC = reader.readFourCC();
         int imapLen = reader.readI32();
-        // imap content: numMaps (4), mmapOffset (4), ...
-        int numMaps = reader.readI32();
+        // imap content: mapVersion (4), mmapOffset (4), directorVersion (4)
+        // See ScummVM archive.cpp readMemoryMap()
+        int mapVersion = reader.readI32();
         int mmapOffset = reader.readI32();
+        // Read directorVersion from imap if available (0 for D4, 0x4c1 for D5, 0x4c7 for D6, etc.)
+        int imapDirVersion = 0;
+        if (imapLen >= 12) {
+            imapDirVersion = reader.readI32();
+        }
 
         // Read mmap (memory map)
         reader.setPosition(mmapOffset);

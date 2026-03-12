@@ -324,7 +324,8 @@ public record ScriptChunk(
             reader.setPosition(literalsOffset);
             List<int[]> literalInfo = new ArrayList<>();
             for (int i = 0; i < literalCount; i++) {
-                int type = reader.readI32();
+                // Pre-D5: literal type is u16; D5+: u32 (see ProjectorRays subchunk.cpp LiteralStore::readRecord)
+                int type = (version < 0x4B1) ? reader.readU16() : reader.readI32();
                 int offset = reader.readI32();
                 literalInfo.add(new int[]{type, offset});
             }

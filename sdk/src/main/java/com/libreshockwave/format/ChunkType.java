@@ -12,12 +12,15 @@ public enum ChunkType {
     // Container chunks
     RIFX("RIFX", "RIFX Container"),
     XFIR("XFIR", "RIFX Container (little-endian)"),
+    RIFF("RIFF", "RIFF Container (D3 Windows)"),
+    FFIR("FFIR", "RIFF Container (D3 Windows, little-endian)"),
 
     // Movie types
     MV93("MV93", "Director Movie"),
     MC95("MC95", "Director Cast"),
     FGDM("FGDM", "Shockwave Movie (Afterburner)"),
     FGDC("FGDC", "Shockwave Cast (Afterburner)"),
+    RMMP("RMMP", "RIFF Resource Map Marker (D3)"),
 
     // Memory/resource management
     IMAP("imap", "Initial Map"),
@@ -35,6 +38,8 @@ public enum ChunkType {
     CASt("CASt", "Cast Member Definition"),
     KEYp("KEY*", "Key Table"),          // Note: * in FourCC
     Cinf("Cinf", "Cast Info"),
+    VWCR("VWCR", "Cast Members (D3)"),
+    VWCI("VWCI", "Cast Info (D3)"),
 
     // Scripts
     LctX("LctX", "Script Context (capital X)"),
@@ -104,7 +109,11 @@ public enum ChunkType {
     }
 
     public boolean isContainer() {
-        return this == RIFX || this == XFIR;
+        return this == RIFX || this == XFIR || this == RIFF || this == FFIR;
+    }
+
+    public boolean isRIFF() {
+        return this == RIFF || this == FFIR;
     }
 
     public boolean isMovieType() {
