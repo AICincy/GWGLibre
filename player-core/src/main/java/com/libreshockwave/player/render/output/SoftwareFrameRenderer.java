@@ -71,11 +71,9 @@ public final class SoftwareFrameRenderer {
             }
         }
 
-        // Draw 1px white stage border (Director player feature)
-        // drawStageBorder(argb, stageWidth, stageHeight, 0xFFFFFFFF);
-
-        // Draw 1px black stage border (Director player feature)
-        drawStageBorder(argb, stageWidth, stageHeight, 0xFF000000);
+        // Stage border disabled: Director Shockwave player in browser does not
+        // draw a border around the stage — only the standalone projector does.
+        // drawStageBorder(argb, stageWidth, stageHeight, 0xFF000000);
 
         return new Bitmap(stageWidth, stageHeight, 32, argb);
     }
@@ -323,9 +321,11 @@ public final class SoftwareFrameRenderer {
         int dstG = (dst >> 8) & 0xFF;
         int dstB = dst & 0xFF;
 
-        int outR = (srcR * srcA + dstR * dstA * invA / 255) / outA;
-        int outG = (srcG * srcA + dstG * dstA * invA / 255) / outA;
-        int outB = (srcB * srcA + dstB * dstA * invA / 255) / outA;
+        // Use rounding (+ outA/2) instead of truncation for correct alpha blending
+        int half = outA / 2;
+        int outR = (srcR * srcA + dstR * dstA * invA / 255 + half) / outA;
+        int outG = (srcG * srcA + dstG * dstA * invA / 255 + half) / outA;
+        int outB = (srcB * srcA + dstB * dstA * invA / 255 + half) / outA;
 
         argb[dstIdx] = (outA << 24) | (outR << 16) | (outG << 8) | outB;
     }

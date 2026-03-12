@@ -57,6 +57,10 @@ public class SpriteState {
         this.width = data.width();
         this.height = data.height();
         this.inkMode = InkMode.fromCode(data.ink());
+        // BLEND ink stores blend as 0-255 in score byte 21; convert to 0-100 percent
+        if (this.inkMode == InkMode.BLEND && data.blendByte() > 0) {
+            this.blend = Math.round(data.blendByte() * 100f / 255f);
+        }
         this.foreColor = data.resolvedForeColor();
         this.backColor = data.backColor();
     }

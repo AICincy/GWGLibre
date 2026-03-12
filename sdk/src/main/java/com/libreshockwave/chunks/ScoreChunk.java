@@ -100,12 +100,13 @@ public record ScoreChunk(
         int height,
         int width,
         int colorFlag,
+        int blendByte,
         int foreColorG,
         int backColorG,
         int foreColorB,
         int backColorB
     ) {
-        public static final ChannelData EMPTY = new ChannelData(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        public static final ChannelData EMPTY = new ChannelData(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
         /** Typed accessor: returns null if castLib is 0 (empty slot). */
         public CastLibId castLibId() {
@@ -139,13 +140,14 @@ public record ScoreChunk(
             // 20 bytes read so far
 
             int colorFlag = 0;
+            int blendByte = 0;
             int foreColorG = 0, backColorG = 0, foreColorB = 0, backColorB = 0;
 
             if (spriteRecordSize >= 24) {
-                // Bytes 20-23: colorFlag and unknown bytes
+                // Bytes 20-23: colorFlag, blend, and unknown bytes
                 int unk3 = reader.readU8();
                 colorFlag = (unk3 & 0xF0) >> 4;
-                reader.readU8(); // unk4
+                blendByte = reader.readU8(); // byte 21: blend (0-255 scale, used with BLEND ink)
                 reader.readU8(); // unk5
                 reader.readU8(); // unk6
             }
@@ -162,7 +164,7 @@ public record ScoreChunk(
                 spriteType, ink, foreColor, backColor,
                 castLib, castMember, unk1, unk2,
                 posY, posX, height, width,
-                colorFlag, foreColorG, backColorG, foreColorB, backColorB
+                colorFlag, blendByte, foreColorG, backColorG, foreColorB, backColorB
             );
         }
 

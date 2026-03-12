@@ -30,7 +30,7 @@ public final class InkProcessor {
             || ink == InkMode.NOT_COPY || ink == InkMode.NOT_TRANSPARENT || ink == InkMode.NOT_REVERSE
             || ink == InkMode.NOT_GHOST || ink == InkMode.MATTE || ink == InkMode.ADD_PIN
             || ink == InkMode.ADD || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
-            || ink == InkMode.BACKGROUND_TRANSPARENT
+            || ink == InkMode.BACKGROUND_TRANSPARENT || ink == InkMode.BLEND
             || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
     }
 
@@ -120,7 +120,7 @@ public final class InkProcessor {
             return masked;
         } else if (ink == InkMode.NOT_GHOST || ink == InkMode.ADD_PIN
                 || ink == InkMode.ADD || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
-                || ink == InkMode.BACKGROUND_TRANSPARENT) {
+                || ink == InkMode.BACKGROUND_TRANSPARENT || ink == InkMode.BLEND) {
             // Background transparent / not-ghost / etc: color-key
             int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
             if (bgColor < 0) {
@@ -211,15 +211,17 @@ public final class InkProcessor {
         // Exact color matching for all bit depths.
         // Director uses palette-index matching for background transparent ink,
         // which is equivalent to exact RGB matching for decoded bitmaps.
-        // Graduated alpha was previously used for 32-bit bitmaps to smooth
-        // anti-aliased edges, but it incorrectly reduced the opacity of
-        // near-background content pixels (e.g., #EEEEEE text on white bg).
         for (int i = 0; i < srcPixels.length; i++) {
-            int rgb = srcPixels[i] & 0xFFFFFF;
-            if (rgb == bgColorRGB) {
-                result[i] = 0x00000000; // Fully transparent
+            int alpha = (srcPixels[i] >>> 24) & 0xFF;
+            if (alpha == 0) {
+                result[i] = 0x00000000; // Preserve already-transparent pixels
             } else {
-                result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+                int rgb = srcPixels[i] & 0xFFFFFF;
+                if (rgb == bgColorRGB) {
+                    result[i] = 0x00000000; // Fully transparent
+                } else {
+                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+                }
             }
         }
 

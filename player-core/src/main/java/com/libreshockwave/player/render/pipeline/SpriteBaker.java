@@ -217,14 +217,18 @@ public class SpriteBaker {
             return null;
         }
 
-        // For BACKGROUND_TRANSPARENT text, the text renderer already produces
-        // transparent background pixels (alpha=0). Skip ink processing to avoid
-        // making the text itself transparent when it matches the resolved bg color.
+        // For BACKGROUND_TRANSPARENT text:
+        // - XTRA text members (labels, dynamic text): apply ink processing to remove
+        //   white background, making text float over whatever is behind it.
+        // - Regular TEXT members (input fields): preserve white background as content.
         if (sprite.getInkMode() == com.libreshockwave.id.InkMode.BACKGROUND_TRANSPARENT) {
-            return textImage;
+            boolean isXtra = sprite.getCastMember() != null && sprite.getCastMember().isTextXtra();
+            if (!isXtra) {
+                return textImage;
+            }
         }
 
-        // Apply ink processing for other ink modes
+        // Apply ink processing
         if (InkProcessor.shouldProcessInk(sprite.getInk())) {
             textImage = InkProcessor.applyInk(textImage, sprite.getInk(),
                     sprite.getBackColor(), false, null);
