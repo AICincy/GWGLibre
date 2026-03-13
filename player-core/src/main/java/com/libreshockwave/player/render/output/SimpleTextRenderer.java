@@ -26,12 +26,15 @@ public class SimpleTextRenderer implements TextRenderer {
         if (height <= 0) height = 20;
 
         String style = fontStyle != null ? fontStyle.toLowerCase() : "";
-        boolean syntheticBold = style.contains("bold");
+        boolean wantsBold = style.contains("bold");
+        boolean wantsItalic = style.contains("italic");
         boolean underline = style.contains("underline");
 
-        // Check for PFR bitmap font
-        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
+        // Check for PFR bitmap font (or Windows TTF, or Mac BDF)
+        boolean[] usedRealBold = {false};
+        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize, wantsBold, wantsItalic, usedRealBold);
         if (pfrFont != null) {
+            boolean syntheticBold = wantsBold && !usedRealBold[0];
             return renderWithBitmapFont(pfrFont, text, width, height,
                     alignment, textColor, bgColor, wordWrap,
                     fixedLineSpace, topSpacing, syntheticBold, underline);
@@ -154,21 +157,39 @@ public class SimpleTextRenderer implements TextRenderer {
      *
      * @return the resolved BitmapFont, or null if no PFR fonts are registered
      */
-    private static BitmapFont resolveBitmapFont(String fontName, int fontSize) {
+    private static BitmapFont resolveBitmapFont(String fontName, int fontSize,
+                                                    boolean bold, boolean italic,
+                                                    boolean[] usedRealBold) {
         if (fontName == null) return null;
 
-        // 1. Try exact font name
+        // 1. Try Windows TTF font with real bold/italic variant
+        BitmapFont winFont = com.libreshockwave.player.cast.WindowsFontBundle.getFont(
+                fontName, fontSize, bold, italic);
+        if (winFont != null) {
+            usedRealBold[0] = bold && com.libreshockwave.player.cast.WindowsFontBundle.hasBoldVariant(fontName);
+            return winFont;
+        }
+
+        // 2. Try Mac bundled font with real bold/italic variant
+        BitmapFont macFont = com.libreshockwave.player.cast.MacFontBundle.getFont(
+                fontName, fontSize, bold, italic);
+        if (macFont != null) {
+            usedRealBold[0] = bold && com.libreshockwave.player.cast.MacFontBundle.hasBoldVariant(fontName);
+            return macFont;
+        }
+
+        // 3. Try exact font name via FontRegistry (PFR fonts, etc.)
         BitmapFont exact = FontRegistry.getBitmapFont(fontName, fontSize);
         if (exact != null) return exact;
 
-        // 2. Try canonical/fuzzy match
+        // 4. Try canonical/fuzzy match
         String resolved = FontRegistry.resolveFont(fontName);
         if (resolved != null) {
             BitmapFont font = FontRegistry.getBitmapFont(resolved, fontSize);
             if (font != null) return font;
         }
 
-        // 3. Last resort: first registered font with size - 1
+        // 5. Last resort: first registered font with size - 1
         // (system fonts are visually larger than pixel fonts at the same nominal size)
         String fallback = FontRegistry.getFirstRegisteredFont();
         if (fallback != null) {
@@ -177,6 +198,11 @@ public class SimpleTextRenderer implements TextRenderer {
         }
 
         return null;
+    }
+
+    /** Backward-compatible overload without bold/italic. */
+    private static BitmapFont resolveBitmapFont(String fontName, int fontSize) {
+        return resolveBitmapFont(fontName, fontSize, false, false, new boolean[]{false});
     }
 
     private Bitmap renderWithBitmapFont(BitmapFont font, String text, int width, int height,

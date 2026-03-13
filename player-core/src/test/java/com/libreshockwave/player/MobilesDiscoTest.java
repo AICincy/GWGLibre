@@ -75,7 +75,7 @@ public class MobilesDiscoTest {
 
         // === TEXT MEMBER DIAGNOSTIC ===
         System.out.println("\n=== TEXT MEMBER DIAGNOSTIC ===");
-        int[] textMemberNums = {256, 257, 258, 259, 260, 261, 262, 263, 264, 265};
+        int[] textMemberNums = {182, 199, 253, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265};
         for (int castLibNum = 1; castLibNum <= 2; castLibNum++) {
             for (int memberNum : textMemberNums) {
                 var member = file.getCastMemberByNumber(castLibNum, memberNum);
@@ -102,6 +102,63 @@ public class MobilesDiscoTest {
                         xmedText != null ? xmedText.fontStyle() : -1,
                         xmedText != null ? xmedText.alignment() : "?",
                         textPreview);
+                // Dump specificData hex for bold investigation
+                if (sd != null && (memberNum == 253 || memberNum == 257 || memberNum == 182 || memberNum == 256)) {
+                    StringBuilder sdHex = new StringBuilder();
+                    for (int bi = 0; bi < Math.min(sd.length, 80); bi++) {
+                        sdHex.append(String.format("%02X ", sd[bi] & 0xFF));
+                        if (bi == 7 || bi == 15 || bi == 23 || bi == 31 || bi == 39 || bi == 47 || bi == 55 || bi == 63 || bi == 71) sdHex.append("| ");
+                    }
+                    System.out.printf("    specificData[0..%d]: %s%n", Math.min(sd.length, 80)-1, sdHex.toString().trim());
+                }
+
+                // Dump raw XMED hex for font/style sections
+                byte[] xmedRaw = null;
+                if (file.getKeyTable() != null) {
+                    for (var kentry : file.getKeyTable().getEntriesForOwner(member.id())) {
+                        if (kentry.fourccString().equals("XMED")) {
+                            var chunk = file.getChunk(kentry.sectionId());
+                            if (chunk instanceof com.libreshockwave.chunks.RawChunk rc) {
+                                xmedRaw = rc.data();
+                            }
+                        }
+                    }
+                }
+                if (xmedRaw != null) {
+                    byte[] xd = xmedRaw;
+                    // For M253 and M257, dump FULL XMED for comparison
+                    if (memberNum == 253 || memberNum == 257 || memberNum == 182) {
+                        System.out.printf("    FULL XMED (%d bytes):%n", xd.length);
+                        for (int row = 0; row < xd.length; row += 32) {
+                            StringBuilder hex = new StringBuilder();
+                            StringBuilder asc = new StringBuilder();
+                            for (int k = row; k < Math.min(row + 32, xd.length); k++) {
+                                hex.append(String.format("%02X ", xd[k] & 0xFF));
+                                int bv = xd[k] & 0xFF;
+                                asc.append((bv >= 0x20 && bv < 0x7F) ? (char) bv : '.');
+                            }
+                            System.out.printf("    @%04X: %-96s %s%n", row, hex, asc);
+                        }
+                    } else {
+                        // Abbreviated: dump section 0006 first 120 bytes
+                        for (int bi = 0; bi < xd.length - 5; bi++) {
+                            if (xd[bi] == 0x03 && xd[bi+1] == '0' && xd[bi+2] == '0' && xd[bi+3] == '0' && xd[bi+4] == '6') {
+                                int secStart = bi + 1;
+                                int dumpLen = Math.min(120, xd.length - secStart);
+                                StringBuilder hex = new StringBuilder();
+                                StringBuilder asc = new StringBuilder();
+                                for (int k = 0; k < dumpLen; k++) {
+                                    hex.append(String.format("%02X ", xd[secStart + k] & 0xFF));
+                                    int bv = xd[secStart + k] & 0xFF;
+                                    asc.append((bv >= 0x20 && bv < 0x7F) ? (char) bv : '.');
+                                }
+                                System.out.printf("    SEC0006 hex: %s%n", hex.toString().trim());
+                                System.out.printf("    SEC0006 asc: %s%n", asc);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
         System.out.println("=== END TEXT MEMBER DIAGNOSTIC ===\n");

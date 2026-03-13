@@ -158,38 +158,53 @@ public class XmedTextParser {
 
     /**
      * Extract font name from XMED data.
-     * Section "0008" contains font entries in format:
-     *   tag(4) + length(8) + count(8) + null + "HEX_FIELD_WIDTH," + name_len_byte + font_name + null_padding
+     * Section "0008" contains TWO sets of font entries:
+     *   1) Mac font names (e.g., Geneva) — appear first after the section header
+     *   2) Windows font names (e.g., Verdana) — appear later after metadata records
+     * Each font entry: null + "40," + length_byte + font_name + null_padding (64 bytes)
+     * We prefer the Windows name and fall back to the Mac name.
      */
     private static String extractFont(byte[] data, String ascii) {
         int tagIdx = ascii.indexOf("0008");
         if (tagIdx < 0) return null;
 
-        // Skip tag(4) + length(8) + count(8) = 20 chars, then find null byte
-        for (int i = tagIdx + 20; i < data.length - 2; i++) {
-            if (data[i] == 0x00) {
-                // After null: "HEX_FIELD_WIDTH," then length_byte + font_name
-                // Find the comma
-                for (int j = i + 1; j < Math.min(i + 10, data.length); j++) {
-                    if (data[j] == ',') {
-                        // Next byte is the name length
-                        if (j + 1 < data.length) {
-                            int nameLen = data[j + 1] & 0xFF;
-                            if (nameLen > 0 && j + 2 + nameLen <= data.length) {
-                                String fontName = new String(data, j + 2, nameLen,
-                                        java.nio.charset.StandardCharsets.ISO_8859_1).trim();
-                                if (!fontName.isEmpty()) {
-                                    return fontName;
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
+        // Collect ALL font names from section 0008 by finding "40," patterns
+        // followed by a length byte and font name
+        String macFont = null;
+        String winFont = null;
+        int fontCount = 0;
+
+        for (int i = tagIdx + 20; i < data.length - 10; i++) {
+            // Stop if we hit the next section (0x03 delimiter followed by "000")
+            if (data[i] == 0x03 && i + 3 < data.length
+                    && data[i+1] == '0' && data[i+2] == '0' && data[i+3] == '0') {
                 break;
             }
+
+            // Look for null + "40," pattern (null byte, then ASCII "40,")
+            if (data[i] == 0x00 && i + 3 < data.length
+                    && data[i+1] == '4' && data[i+2] == '0' && data[i+3] == ',') {
+                // Length byte follows the comma
+                int nameLen = data[i + 4] & 0xFF;
+                if (nameLen > 0 && nameLen < 64 && i + 5 + nameLen <= data.length) {
+                    String fontName = new String(data, i + 5, nameLen,
+                            java.nio.charset.StandardCharsets.ISO_8859_1).trim();
+                    if (!fontName.isEmpty()) {
+                        fontCount++;
+                        if (macFont == null) {
+                            macFont = fontName; // First font = Mac name
+                        } else if (!fontName.equals(macFont)) {
+                            winFont = fontName; // Different name after first = Windows name
+                        }
+                    }
+                }
+                // Skip past the 64-byte padded field
+                i += 4 + 64 - 1;
+            }
         }
-        return null;
+
+        // Prefer Windows font name, fall back to Mac font name
+        return winFont != null ? winFont : macFont;
     }
 
     /**
@@ -375,20 +390,13 @@ public class XmedTextParser {
         int pos = bodyStart;
         if (data[pos] == 0x02) pos++;
 
-        // Skip the offset field (hex digits until [01] or high-byte)
-        for (int i = pos; i < Math.min(bodyStart + 15, data.length); i++) {
-            if (data[i] == 0x01) {
-                // Value follows as ASCII hex digit(s)
-                if (i + 1 < data.length) {
-                    int val = parseHexValue(data, i + 1);
-                    return alignmentFromValue(val);
-                }
-                break;
-            }
-            // Raw high byte (0x80+) = value with high-bit flag
-            int b = data[i] & 0xFF;
-            if (b >= 0x80) {
-                return alignmentFromValue(b & 0x7F);
+        // Scan for [01] delimiter followed by alignment value.
+        // Skip 0x80+ control bytes (like [81]) — these are NOT alignment values.
+        // The actual alignment is at the [01] delimiter: [01]"0"=left, [01]"1"=right, [01]"2"=center.
+        for (int i = pos; i < Math.min(bodyStart + 30, data.length); i++) {
+            if (data[i] == 0x01 && i + 1 < data.length) {
+                int val = parseHexValue(data, i + 1);
+                return alignmentFromValue(val);
             }
         }
         return null;

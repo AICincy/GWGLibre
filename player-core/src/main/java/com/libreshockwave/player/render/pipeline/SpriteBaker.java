@@ -358,10 +358,18 @@ public class SpriteBaker {
         var renderer = CastMember.getTextRendererStatic();
         if (renderer == null) return null;
 
-        // Build font style string from XMED style flags (1=bold, 2=italic, 4=underline)
+        // Build font style string.
+        // Bold flag comes from specificData @32-35 (u32 BE: 1=bold, 0=plain),
+        // NOT from XMED section 0006 (which is identical between bold/non-bold members).
+        // Italic/underline still come from XMED style flags if present.
         int style = xmedText.fontStyle();
+        boolean isBold = false;
+        if (sd != null && sd.length >= 36) {
+            int boldFlag = ((sd[32]&0xFF)<<24)|((sd[33]&0xFF)<<16)|((sd[34]&0xFF)<<8)|(sd[35]&0xFF);
+            isBold = boldFlag != 0;
+        }
         String styleStr = "";
-        if ((style & 1) != 0) styleStr += "bold";
+        if (isBold || (style & 1) != 0) styleStr += "bold";
         if ((style & 2) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "italic";
         if ((style & 4) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "underline";
 
