@@ -16,7 +16,8 @@ public record FrameSnapshot(
     int backgroundColor,
     List<RenderSprite> sprites,
     String debugInfo,
-    Bitmap stageImage
+    Bitmap stageImage,
+    int bakeTick
 ) {
     /**
      * Render this snapshot to a Bitmap using pure software compositing.

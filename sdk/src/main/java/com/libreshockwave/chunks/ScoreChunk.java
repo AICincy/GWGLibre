@@ -590,8 +590,8 @@ public record ScoreChunk(
                 continue;
             }
 
-            if (entryBytes.length == 44) {
-                // Primary entry (44 bytes)
+            if (entryBytes.length >= 44 && entryBytes.length <= 48) {
+                // Primary entry (44 bytes, or 48 bytes with 4 extra trailing bytes)
                 BinaryReader reader = new BinaryReader(entryBytes, ByteOrder.BIG_ENDIAN);
                 FrameIntervalPrimary primary = FrameIntervalPrimary.read(reader);
 

@@ -119,6 +119,12 @@ public class StageRenderer {
 
                         // Check if this channel has a dynamic member override
                         if (state != null && state.hasDynamicMember()) {
+                            // Apply score base properties (ink, colors) to dynamic sprites.
+                            // In Director, score properties are the base values; behaviors
+                            // override only what they explicitly set.
+                            if (state.isDynamic()) {
+                                state.applyScoreDefaults(entry.data());
+                            }
                             RenderSprite sprite = createDynamicRenderSprite(state);
                             if (sprite != null) {
                                 sprites.add(sprite);

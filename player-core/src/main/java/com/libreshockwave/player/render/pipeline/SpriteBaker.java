@@ -22,6 +22,7 @@ public class SpriteBaker {
     private final BitmapCache bitmapCache;
     private final CastLibManager castLibManager;
     private final Player player;
+    private int tickCounter;
 
     public SpriteBaker(BitmapCache bitmapCache, CastLibManager castLibManager, Player player) {
         this.bitmapCache = bitmapCache;
@@ -29,10 +30,15 @@ public class SpriteBaker {
         this.player = player;
     }
 
+    public int getTickCounter() {
+        return tickCounter;
+    }
+
     /**
      * Bake all sprites in the list, returning a new list with baked bitmaps attached.
      */
     public List<RenderSprite> bakeSprites(List<RenderSprite> sprites) {
+        tickCounter++;
         List<RenderSprite> result = new ArrayList<>(sprites.size());
         for (RenderSprite sprite : sprites) {
             result.add(bake(sprite));
@@ -415,8 +421,9 @@ public class SpriteBaker {
         int rectLeft = filmInfo.rectLeft();
         int rectTop = filmInfo.rectTop();
 
-        // Use the last frame for a complete view of the animation
-        int lastFrame = frameData.header().frameCount() - 1;
+        // Cycle through film loop frames based on tick counter (animated marquee)
+        int frameCount = frameData.header().frameCount();
+        int targetFrame = (frameCount > 0) ? (tickCounter % frameCount) : 0;
 
         // Create output bitmap filled with transparent
         int[] outPixels = new int[loopW * loopH];
@@ -424,7 +431,7 @@ public class SpriteBaker {
         // Collect sub-sprites for the target frame
         var subSprites = new ArrayList<ScoreChunk.FrameChannelEntry>();
         for (var entry : frameData.frameChannelData()) {
-            if (entry.frameIndex().value() == lastFrame && !entry.data().isEmpty()) {
+            if (entry.frameIndex().value() == targetFrame && !entry.data().isEmpty()) {
                 subSprites.add(entry);
             }
         }

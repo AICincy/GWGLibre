@@ -5,9 +5,11 @@ import com.libreshockwave.player.PlayerEvent;
 import com.libreshockwave.player.behavior.BehaviorInstance;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.event.EventDispatcher;
+import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.score.ScoreBehaviorRef;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.player.score.SpriteSpan;
+import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
@@ -30,6 +32,7 @@ public class FrameContext {
 
     private TimeoutManager timeoutManager;  // Set by Player for system event forwarding
     private java.util.function.Supplier<Datum> actorListSupplier;  // Provides _movie.actorList
+    private SpriteRegistry spriteRegistry;  // For checking puppet state during frame transitions
 
     private int currentFrame = 1;
     private Integer pendingFrame = null;  // Set by go/jump commands
@@ -67,6 +70,10 @@ public class FrameContext {
 
     public void setActorListSupplier(java.util.function.Supplier<Datum> supplier) {
         this.actorListSupplier = supplier;
+    }
+
+    public void setSpriteRegistry(SpriteRegistry registry) {
+        this.spriteRegistry = registry;
     }
 
     public int getCurrentFrame() {
@@ -285,6 +292,8 @@ public class FrameContext {
 
     /**
      * End sprites that are leaving when transitioning frames.
+     * In Director, puppeted sprites persist across frame transitions —
+     * they are NOT removed when their Score span ends.
      */
     private void endSpritesLeavingFrame(int oldFrame, int newFrame) {
         Set<Integer> newActiveChannels = navigator.getActiveChannels(newFrame);
@@ -292,6 +301,14 @@ public class FrameContext {
         List<Integer> leaving = new ArrayList<>();
         for (int channel : activeChannels) {
             if (!newActiveChannels.contains(channel)) {
+                // Check if this sprite is puppeted — puppeted sprites persist
+                if (spriteRegistry != null) {
+                    SpriteState state = spriteRegistry.get(channel);
+                    if (state != null && state.isPuppet()) {
+                        logEvent("endSprite SKIPPED (puppeted): channel " + channel);
+                        continue;
+                    }
+                }
                 leaving.add(channel);
             }
         }

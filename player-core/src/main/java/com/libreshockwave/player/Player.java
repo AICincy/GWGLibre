@@ -186,6 +186,7 @@ public class Player {
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.getEventDispatcher().setSpriteRegistry(stageRenderer.getSpriteRegistry());
+        this.frameContext.setSpriteRegistry(stageRenderer.getSpriteRegistry());
         this.frameContext.getBehaviorManager().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.playerTraceListener = new PlayerTraceListener();
@@ -293,6 +294,7 @@ public class Player {
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.getEventDispatcher().setSpriteRegistry(stageRenderer.getSpriteRegistry());
+        this.frameContext.setSpriteRegistry(stageRenderer.getSpriteRegistry());
         this.frameContext.getBehaviorManager().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.playerTraceListener = new PlayerTraceListener();
@@ -569,7 +571,8 @@ public class Player {
             stageRenderer.getBackgroundColor(),
             List.copyOf(baked),
             debug,
-            stageRenderer.hasStageImage() ? stageRenderer.getStageImage() : null
+            stageRenderer.hasStageImage() ? stageRenderer.getStageImage() : null,
+            spriteBaker.getTickCounter()
         );
     }
 

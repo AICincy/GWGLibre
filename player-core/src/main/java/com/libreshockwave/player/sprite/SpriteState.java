@@ -32,6 +32,8 @@ public class SpriteState {
     private boolean hasForeColor = false;
     private boolean hasBackColor = false;
     private boolean hasSizeChanged = false;
+    private boolean inkExplicitlySet = false;
+    private boolean scoreDefaultsApplied = false;
     private boolean flipH = false;
     private boolean flipV = false;
     private int cursor = 0; // Director cursor: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait
@@ -99,8 +101,8 @@ public class SpriteState {
     public void setHeight(int height) { this.height = height; this.hasSizeChanged = true; }
     public void setVisible(boolean visible) { this.visible = visible; }
     public void setPuppet(boolean puppet) { this.puppet = puppet; }
-    public void setInk(int ink) { this.inkMode = InkMode.fromCode(ink); }
-    public void setInkMode(InkMode ink) { this.inkMode = ink; }
+    public void setInk(int ink) { this.inkMode = InkMode.fromCode(ink); this.inkExplicitlySet = true; }
+    public void setInkMode(InkMode ink) { this.inkMode = ink; this.inkExplicitlySet = true; }
     public void setBlend(int blend) { this.blend = blend; }
     public void setStretch(int stretch) { this.stretch = stretch; }
     public boolean isFlipH() { return flipH; }
@@ -181,6 +183,31 @@ public class SpriteState {
         if (!hasSizeChanged && w > 0 && h > 0) {
             this.width = w;
             this.height = h;
+        }
+    }
+
+    /**
+     * Apply Score-data properties as defaults for a dynamically-created sprite.
+     * In Director, when a behavior puppets a sprite, the Score's ink, colors,
+     * and blend serve as base values; the behavior overrides only what it sets.
+     * Called once when score data is first encountered for a dynamic state.
+     */
+    public void applyScoreDefaults(ScoreChunk.ChannelData data) {
+        if (scoreDefaultsApplied || data == null) return;
+        scoreDefaultsApplied = true;
+        if (!inkExplicitlySet) {
+            this.inkMode = InkMode.fromCode(data.ink());
+            if (this.inkMode == InkMode.BLEND && data.blendByte() > 0) {
+                this.blend = Math.round(data.blendByte() * 100f / 255f);
+            }
+        }
+        if (!hasForeColor) {
+            this.foreColor = data.resolvedForeColor();
+            this.hasForeColor = true;
+        }
+        if (!hasBackColor) {
+            this.backColor = data.backColor();
+            this.hasBackColor = true;
         }
     }
 

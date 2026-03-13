@@ -215,10 +215,10 @@ System.out.println("\n=== Starting playback ===");
         var frameScriptRef = nav.getFrameScript(98);
         System.out.println("Frame 98 script ref: " + frameScriptRef);
         // Find member 135 (the frame script for frame 98) and disassemble it
-        var member135 = file.getCastMemberByNumber(1, 135);
-        if (member135 != null) {
-            System.out.println("Member 135: name='" + member135.name() + "' scriptId=" + member135.scriptId());
-            var script135 = file.getScriptByContextId(member135.scriptId());
+        var frameMember135 = file.getCastMemberByNumber(1, 135);
+        if (frameMember135 != null) {
+            System.out.println("Member 135: name='" + frameMember135.name() + "' scriptId=" + frameMember135.scriptId());
+            var script135 = file.getScriptByContextId(frameMember135.scriptId());
             if (script135 != null) {
                 System.out.println("Frame 98 script bytecode:");
                 file.disassembleScript(script135);
@@ -309,7 +309,7 @@ System.out.println("\n=== Starting playback ===");
             }
         }
 
-        // Dump all movie scripts and their handlers
+        // Dump all movie scripts and their handlers, disassemble startMovie
         System.out.println("\nAll movie scripts:");
         for (var script : file.getScripts()) {
             if (script.getScriptType() == com.libreshockwave.chunks.ScriptChunk.ScriptType.MOVIE_SCRIPT) {
@@ -320,6 +320,9 @@ System.out.println("\n=== Starting playback ===");
                         System.out.printf("    handler: %s%n", sNames.getName(handler.nameId()));
                     }
                 }
+                // Disassemble this movie script
+                System.out.printf("  Disassembling movie script %s:%n", script.id());
+                file.disassembleScript(script);
             }
         }
 
@@ -366,6 +369,98 @@ System.out.println("\n=== Starting playback ===");
                 System.out.printf("  ch=%d frames=%d-%d behaviors=%d%s%n",
                         ch, span.getStartFrame(), span.getEndFrame(), span.getBehaviors().size(),
                         isStarCh ? " [STAR]" : "");
+            }
+        }
+
+        // Dump ALL raw frame intervals for star channels
+        System.out.println("\nRaw frame intervals for star channels:");
+        for (var interval : scoreChunk.frameIntervals()) {
+            var primary = interval.primary();
+            int ch = primary.channelIndex();
+            if (ch >= 33 && ch <= 49) {
+                System.out.printf("  ch=%d startFrame=%d endFrame=%d unk0=%d unk1=%d secondary=%s%n",
+                        ch, primary.startFrame(), primary.endFrame(),
+                        primary.unk0(), primary.unk1(),
+                        interval.secondary() != null ?
+                                "castLib=" + interval.secondary().castLib() + " member=" + interval.secondary().castMember() :
+                                "none");
+            }
+        }
+
+        // Check if stars exist in raw score data at frames 90-115
+        System.out.println("\nRaw score star data presence (ch=33) at frames 90-115:");
+        if (scoreChunk != null) {
+            byte[] rawData = scoreChunk.getRawChannelData();
+            int sprRecSize = scoreChunk.getSpriteRecordSize();
+            int numCh = scoreChunk.getChannelCount();
+            int frameSize = numCh * sprRecSize;
+            for (int f = 90; f <= 115; f++) {
+                int pos = f * frameSize + 33 * sprRecSize;
+                if (pos + sprRecSize <= rawData.length) {
+                    int sprType = rawData[pos] & 0xFF;
+                    int castMem = ((rawData[pos+6]&0xFF)<<8) | (rawData[pos+7]&0xFF);
+                    System.out.printf("  frame=%d (1-indexed=%d): sprType=%d castMem=%d%n",
+                            f, f+1, sprType, castMem);
+                }
+            }
+        }
+
+        // Dump score entry sizes and Entry[1] content
+        System.out.println("\nScore chunk entries:");
+        var allEntries = scoreChunk.entries();
+        if (allEntries != null) {
+            for (int ei = 0; ei < Math.min(allEntries.size(), 10); ei++) {
+                System.out.printf("  Entry[%d]: %d bytes%n", ei, allEntries.get(ei).length);
+            }
+            if (allEntries.size() > 1 && allEntries.get(1).length > 0) {
+                byte[] entry1 = allEntries.get(1);
+                System.out.printf("  Entry[1] hex (first 200 bytes): ");
+                for (int bi = 0; bi < Math.min(200, entry1.length); bi++) {
+                    System.out.printf("%02X ", entry1[bi] & 0xFF);
+                    if ((bi + 1) % 44 == 0) System.out.println();
+                }
+                System.out.println();
+            }
+            // Dump entries 5953-5968 to see frame behavior references
+            System.out.println("\nEntries around frame 98 frame behavior (5953-5968):");
+            for (int ei = 5953; ei < Math.min(5968, allEntries.size()); ei++) {
+                byte[] entry = allEntries.get(ei);
+                System.out.printf("  Entry[%d] (%db):", ei, entry.length);
+                for (int bi = 0; bi < Math.min(48, entry.length); bi++) {
+                    System.out.printf(" %02X", entry[bi] & 0xFF);
+                }
+                System.out.println();
+            }
+
+            // Dump all 44-byte entries that mention star channels
+            System.out.println("\nAll frame interval entries (showing star channels + skipped):");
+            for (int ei = 2; ei < allEntries.size(); ei++) {
+                byte[] entry = allEntries.get(ei);
+                if (entry.length == 44) {
+                    var rr = new com.libreshockwave.io.BinaryReader(entry, java.nio.ByteOrder.BIG_ENDIAN);
+                    int sf = rr.readI32(), ef = rr.readI32(), u0 = rr.readI32(), u1 = rr.readI32(), ci = rr.readI32();
+                    if (ci >= 33 && ci <= 49 || (sf <= 98 && ef >= 91) || ci == 0) {
+                        System.out.printf("  Entry[%d] (44b): ch=%d startFrame=%d endFrame=%d unk0=%d unk1=%d%n",
+                                ei, ci, sf, ef, u0, u1);
+                    }
+                } else if (entry.length > 0 && entry.length != 44) {
+                    // Check if previous entry was a star channel
+                    if (ei > 2) {
+                        byte[] prev = allEntries.get(ei-1);
+                        if (prev.length == 44) {
+                            var rr2 = new com.libreshockwave.io.BinaryReader(prev, java.nio.ByteOrder.BIG_ENDIAN);
+                            rr2.readI32(); rr2.readI32(); rr2.readI32(); rr2.readI32();
+                            int prevCh = rr2.readI32();
+                            if (prevCh >= 33 && prevCh <= 49) {
+                                System.out.printf("  Entry[%d] (%db, follows ch=%d): hex=", ei, entry.length, prevCh);
+                                for (int bi = 0; bi < Math.min(32, entry.length); bi++) {
+                                    System.out.printf("%02X ", entry[bi] & 0xFF);
+                                }
+                                System.out.println();
+                            }
+                        }
+                    }
+                }
             }
         }
 

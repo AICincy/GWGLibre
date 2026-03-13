@@ -161,6 +161,6 @@ public class LoadingBarDiagnosticTest {
         String debug = String.format("Frame %d | %s", frame, state);
         return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
             renderer.getBackgroundColor(), List.copyOf(baked), debug,
-            renderer.hasStageImage() ? renderer.getStageImage() : null);
+            renderer.hasStageImage() ? renderer.getStageImage() : null, 0);
     }
 }

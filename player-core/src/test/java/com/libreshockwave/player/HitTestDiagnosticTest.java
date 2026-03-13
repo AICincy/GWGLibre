@@ -297,6 +297,6 @@ public class HitTestDiagnosticTest {
         String debug = String.format("Frame %d | %s", frame, state);
         return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
             renderer.getBackgroundColor(), java.util.List.copyOf(baked), debug,
-            renderer.hasStageImage() ? renderer.getStageImage() : null);
+            renderer.hasStageImage() ? renderer.getStageImage() : null, 0);
     }
 }

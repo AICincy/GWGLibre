@@ -20,6 +20,7 @@ public class SoftwareRenderer {
     private int lastFrame = -1;
     private int lastCastRevision = -1;
     private int lastSpriteRevision = -1;
+    private int lastBakeTick = -1;
 
     public SoftwareRenderer(int stageWidth, int stageHeight) {
         this.stageWidth = stageWidth;
@@ -35,15 +36,19 @@ public class SoftwareRenderer {
     public byte[] render(FrameSnapshot snapshot, int castRevision, int spriteRevision) {
         int frame = snapshot.frameNumber();
 
+        int bakeTick = snapshot.bakeTick();
+
         // Cache hit — return previously composited buffer
         if (frame == lastFrame && castRevision == lastCastRevision
-                && spriteRevision == lastSpriteRevision) {
+                && spriteRevision == lastSpriteRevision
+                && bakeTick == lastBakeTick) {
             return rgba;
         }
 
         lastFrame = frame;
         lastCastRevision = castRevision;
         lastSpriteRevision = spriteRevision;
+        lastBakeTick = bakeTick;
 
         // Resize buffer if stage dimensions changed
         if (snapshot.stageWidth() != stageWidth || snapshot.stageHeight() != stageHeight) {
