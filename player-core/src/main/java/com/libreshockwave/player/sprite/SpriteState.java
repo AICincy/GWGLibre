@@ -127,12 +127,17 @@ public class SpriteState {
     }
 
     /**
+     * Position snapshot record — avoids int[] arrays which TeaVM 0.13 WASM
+     * code-gen reorders during element assignment.
+     */
+    public record PositionSnapshot(int locH, int locV, int locZ, int width, int height) {}
+
+    /**
      * Atomically capture all mutable position fields to prevent torn reads
      * when the VM thread updates position mid-render.
-     * @return array of [locH, locV, locZ, width, height]
      */
-    public int[] snapshotPosition() {
-        return new int[]{ locH, locV, locZ, width, height };
+    public PositionSnapshot snapshotPosition() {
+        return new PositionSnapshot(locH, locV, locZ, width, height);
     }
 
     /**

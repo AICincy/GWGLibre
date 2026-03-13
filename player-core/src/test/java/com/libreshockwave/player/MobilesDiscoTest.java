@@ -210,6 +210,21 @@ public class MobilesDiscoTest {
         System.out.println("=== END RAW SCORE BYTES ===\n");
 
 System.out.println("\n=== Starting playback ===");
+        // Dump frame script at frame 98 ("splash")
+        var nav = player.getFrameContext().getNavigator();
+        var frameScriptRef = nav.getFrameScript(98);
+        System.out.println("Frame 98 script ref: " + frameScriptRef);
+        // Find member 135 (the frame script for frame 98) and disassemble it
+        var member135 = file.getCastMemberByNumber(1, 135);
+        if (member135 != null) {
+            System.out.println("Member 135: name='" + member135.name() + "' scriptId=" + member135.scriptId());
+            var script135 = file.getScriptByContextId(member135.scriptId());
+            if (script135 != null) {
+                System.out.println("Frame 98 script bytecode:");
+                file.disassembleScript(script135);
+            }
+        }
+        // No debug diagnostics
         player.play();
         System.out.println("Frame after play(): " + player.getCurrentFrame());
 

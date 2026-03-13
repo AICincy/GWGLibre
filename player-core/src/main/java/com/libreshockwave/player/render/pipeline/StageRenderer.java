@@ -171,12 +171,12 @@ public class StageRenderer {
         SpriteState state = spriteRegistry.getOrCreate(channel, data);
 
         // Snapshot position atomically to prevent torn reads from VM thread
-        int[] pos = state.snapshotPosition();
-        int x = pos[0];
-        int y = pos[1];
-        int locZ = pos[2];
-        int width = pos[3];
-        int height = pos[4];
+        var pos = state.snapshotPosition();
+        int x = pos.locH();
+        int y = pos.locV();
+        int locZ = pos.locZ();
+        int width = pos.width();
+        int height = pos.height();
         boolean visible = state.isVisible();
 
         // Get cast member — use CASp-based lookup for internal casts,
@@ -188,9 +188,9 @@ public class StageRenderer {
 
         // Apply registration point offset (scaled for stretched sprites per ScummVM behavior)
         if (member != null) {
-            int[] reg = scaledRegPoint(member, width, height, x, y);
-            x -= reg[0];
-            y -= reg[1];
+            RegPoint reg = scaledRegPoint(member, width, height, x, y);
+            x -= reg.x();
+            y -= reg.y();
         }
 
         RenderSprite.SpriteType type = member != null ? determineSpriteTypeFromMember(member) : RenderSprite.SpriteType.UNKNOWN;
@@ -231,16 +231,16 @@ public class StageRenderer {
             // bgColor set (e.g., window system color swatches). In Director,
             // a visible sprite with bgColor fills its rect with that color.
             if (state.isPuppet() && state.hasBackColor()) {
-                int[] pos = state.snapshotPosition();
-                int w = pos[3], h = pos[4];
+                var pos = state.snapshotPosition();
+                int w = pos.width(), h = pos.height();
                 if (w > 0 && h > 0) {
                     // Use bgColor as fill color (Director fills puppet sprite rects
                     // with bgColor when no member bitmap is set)
                     int fillColor = state.getBackColor();
                     return new RenderSprite(
                         state.getChannel(),
-                        pos[0], pos[1], w, h,
-                        pos[2], true,
+                        pos.locH(), pos.locV(), w, h,
+                        pos.locZ(), true,
                         RenderSprite.SpriteType.SHAPE,
                         null, null,
                         fillColor, state.getBackColor(),
@@ -254,12 +254,12 @@ public class StageRenderer {
         }
 
         // Snapshot position atomically to prevent torn reads from VM thread
-        int[] pos = state.snapshotPosition();
-        int x = pos[0];
-        int y = pos[1];
-        int locZ = pos[2];
-        int width = pos[3];
-        int height = pos[4];
+        var pos = state.snapshotPosition();
+        int x = pos.locH();
+        int y = pos.locV();
+        int locZ = pos.locZ();
+        int width = pos.width();
+        int height = pos.height();
 
         // Look up the cast member — try CastLibManager first for dynamic sprites,
         // since the castLib/castMember values are runtime numbers from the VM
@@ -282,9 +282,9 @@ public class StageRenderer {
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
             // Apply registration point offset (scaled for stretched sprites)
-            int[] reg = scaledRegPoint(member, width, height, x, y);
-            x -= reg[0];
-            y -= reg[1];
+            RegPoint reg = scaledRegPoint(member, width, height, x, y);
+            x -= reg.x();
+            y -= reg.y();
             // Fallback auto-size: if sprite still has 0x0 dimensions, derive from member
             if (width == 0 && height == 0 && member.isBitmap()
                     && member.specificData() != null && member.specificData().length >= 10) {
@@ -365,13 +365,15 @@ public class StageRenderer {
         };
     }
 
+    /** Registration point result — avoids int[] arrays which TeaVM 0.13 reorders. */
+    private record RegPoint(int x, int y) {}
+
     /**
      * Scale registration point proportionally when sprite dimensions differ from bitmap dimensions.
      * Director (confirmed via ScummVM) scales regPoint by spriteSize/bitmapSize for stretched sprites.
-     * @return int array {scaledRegX, scaledRegY}
      */
-    private int[] scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight,
-                                  int posX, int posY) {
+    private RegPoint scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight,
+                                     int posX, int posY) {
         if (member.isBitmap() && member.specificData() != null && member.specificData().length >= 10) {
             var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
             // ScummVM's getRegistrationOffset() uses bitmap-local coordinates
@@ -386,7 +388,7 @@ public class StageRenderer {
             if (spriteHeight > 0 && bmpH > 0 && bmpH != spriteHeight) {
                 regY = regY * spriteHeight / bmpH;
             }
-            return new int[]{ regX, regY };
+            return new RegPoint(regX, regY);
         }
         // Film loop: the specificData stores a bounding rect in stage coordinates.
         // The regPoint maps the sprite's locH/locV to the rect's origin so the
@@ -394,9 +396,9 @@ public class StageRenderer {
         if (member.memberType() == MemberType.FILM_LOOP
                 && member.specificData() != null && member.specificData().length >= 8) {
             var fi = com.libreshockwave.cast.FilmLoopInfo.parse(member.specificData());
-            return new int[]{ posX - fi.rectLeft(), posY - fi.rectTop() };
+            return new RegPoint(posX - fi.rectLeft(), posY - fi.rectTop());
         }
-        return new int[]{ member.regPointX(), member.regPointY() };
+        return new RegPoint(member.regPointX(), member.regPointY());
     }
 
     /**

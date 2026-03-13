@@ -686,6 +686,9 @@ player-wasm/
 
 ### Development Notes
 
+<details>
+<summary>TeaVM 0.13 WASM code-gen bugs (5 known issues)</summary>
+
 #### TeaVM string switch — never use Java keywords as `case` labels
 
 TeaVM 0.13 silently miscompiles `switch` statements that use Java keywords as string case labels. The case body is never entered at runtime even though equality holds in plain Java:
@@ -781,6 +784,22 @@ map.put(key, value);
 ```
 
 Always extract chained method call results into local variables before passing them as arguments to collection methods like `put()`, `get()`, `add()`, etc.
+
+#### TeaVM `%n` format specifier not supported
+
+TeaVM 0.13 does not support the `%n` (platform newline) format specifier in `String.format()` and `System.out.printf()`. Using `%n` throws `UnknownFormatConversionException` at runtime, which silently crashes any code path that contains it:
+
+```java
+// BROKEN in TeaVM WASM — throws UnknownFormatConversionException:
+System.out.printf("value=%d%n", x);
+
+// CORRECT — use literal \n instead:
+System.out.printf("value=%d\n", x);
+```
+
+Always use `\n` instead of `%n` in format strings. This applies to all code reachable from WASM, including debug logging behind feature flags.
+
+</details>
 
 <details>
 <summary>Multiuser Xtra — WebSocket proxy setup</summary>

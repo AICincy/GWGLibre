@@ -355,7 +355,7 @@ public class SpriteBaker {
 
         // Debug: log font requests
         if (com.libreshockwave.vm.DebugConfig.isDebugPlaybackEnabled()) {
-            System.out.printf("XMED TEXT: font='%s' size=%d style='%s' align='%s' dims=%dx%d text='%s' color=0x%06X aa=%s%n",
+            System.out.printf("XMED TEXT: font='%s' size=%d style='%s' align='%s' dims=%dx%d text='%s' color=0x%06X aa=%s\n",
                     styledText.fontName(), styledText.fontSize(), styleStr,
                     styledText.alignment(), width, height,
                     styledText.text().length() > 40 ? styledText.text().substring(0, 40) + "..." : styledText.text(),
