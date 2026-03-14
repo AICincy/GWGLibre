@@ -55,8 +55,11 @@ public class SpriteRegistry {
      */
     public void updateFromScore(int channel, ScoreChunk.ChannelData data) {
         SpriteState state = sprites.get(channel);
-        if (state != null && !state.isPuppet()) {
+        if (state != null && !state.isPuppet() && !state.hasDynamicMember()) {
             // Only update from score if the sprite is not puppeted
+            // and has no script-set member override. In Director, once a behavior
+            // modifies a sprite's member, it effectively puppets position control —
+            // the Score position should no longer overwrite the behavior's values.
             state.setLocH(data.posX());
             state.setLocV(data.posY());
         }

@@ -493,16 +493,12 @@ System.out.println("\n=== Starting playback ===");
             }
             frameVisits.merge(frameAfter, 1, Integer::sum);
 
-            // After reaching frame 98, force jump to frame 110 where star behaviors are active.
-            // Frame 98's exitFrame script does `go to the frame` which overrides normal goToFrame(),
-            // so we use forceGoToFrame() to bypass the exitFrame handler (simulates user click → go).
-            // Only force-go ONCE — repeated forceGoToFrame destroys and recreates behavior
-            // instances, resetting their properties (animPhase, x1, x2 etc.).
-            if (!jumpedToStars && frameAfter == 98 && tick > 40) {
-                System.out.println("\n=== Force-jumping to frame 114 for star animation ===");
-                // Frame 114 has both star behaviors (ch 33-49) AND a `go to the frame` loop
-                player.getFrameContext().forceGoToFrame(114);
+            // Stay on frame 98 (login screen) - star behaviors animate via exitFrame
+            // Frame 98's exitFrame script does `go to the frame` which keeps looping.
+            // Stars animate on channels 33-49 via their exitFrame behavior handlers.
+            if (!jumpedToStars && frameAfter == 98) {
                 jumpedToStars = true;
+                System.out.println("\n=== Staying on frame 98 for star animation ===");
             }
 
             // Log periodically
@@ -642,7 +638,8 @@ System.out.println("\n=== Starting playback ===");
         String debug = String.format("Frame %d | %s", frame, state);
         return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
                 renderer.getBackgroundColor(), List.copyOf(baked), debug,
-                renderer.hasStageImage() ? renderer.getStageImage() : null);
+                renderer.hasStageImage() ? renderer.getStageImage() : null,
+                baker.getTickCounter());
     }
 
     private static void pixelDiff(BufferedImage rendered, BufferedImage reference, String outputDir) throws Exception {

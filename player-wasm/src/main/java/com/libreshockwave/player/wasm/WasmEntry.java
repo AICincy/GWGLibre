@@ -857,6 +857,48 @@ public class WasmEntry {
     private static String lastDebugHitInfo = "";
 
     /**
+     * Debug: dump star sprite state (channels 33-49).
+     * Logs behavior instances, sprite state, and render sprite info.
+     */
+    @Export(name = "debugStarState")
+    public static void debugStarState() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) { log("debugStarState: no player"); return; }
+        var player = wasmPlayer.getPlayer();
+        var registry = player.getStageRenderer().getSpriteRegistry();
+        var behMgr = player.getFrameContext().getBehaviorManager();
+        int frame = player.getCurrentFrame();
+        StringBuilder sb = new StringBuilder();
+        sb.append("STAR STATE frame=").append(frame).append('\n');
+        int totalBeh = 0;
+        for (int ch = 33; ch <= 49; ch++) {
+            var state = registry.get(ch);
+            var instances = behMgr.getInstancesForChannel(ch);
+            totalBeh += instances.size();
+            if (state != null || !instances.isEmpty()) {
+                sb.append("  ch=").append(ch);
+                if (state != null) {
+                    sb.append(" loc=(").append(state.getLocH()).append(',').append(state.getLocV()).append(')')
+                      .append(' ').append(state.getWidth()).append('x').append(state.getHeight())
+                      .append(" puppet=").append(state.isPuppet())
+                      .append(" dynMem=").append(state.hasDynamicMember())
+                      .append(" eCL=").append(state.getEffectiveCastLib())
+                      .append("/M").append(state.getEffectiveCastMember());
+                } else {
+                    sb.append(" NO_STATE");
+                }
+                if (!instances.isEmpty()) {
+                    for (var inst : instances) {
+                        sb.append(" beh=").append(inst.getProperties());
+                    }
+                }
+                sb.append('\n');
+            }
+        }
+        sb.append("  totalBehaviors=").append(totalBeh).append(" spriteRev=").append(registry.getRevision());
+        log(sb.toString());
+    }
+
+    /**
      * Debug: dump info about sprites at the given stage coordinates.
      * Returns the hit sprite channel, or 0 if no hit.
      * Stores detailed info in lastDebugHitInfo (readable via getDebugHitInfo).
