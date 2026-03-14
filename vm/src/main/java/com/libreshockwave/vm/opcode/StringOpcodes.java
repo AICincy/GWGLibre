@@ -47,7 +47,8 @@ public final class StringOpcodes {
         String bStr = b.toStr();
         if (aStr.isEmpty()) { ctx.push(b); return true; }
         if (bStr.isEmpty()) { ctx.push(a); return true; }
-        ctx.push(Datum.of(aStr + bStr));
+        String result = aStr + bStr;
+        ctx.push(Datum.of(result));
         return true;
     }
 
@@ -121,7 +122,9 @@ public final class StringOpcodes {
             && firstItem == 0 && lastItem == 0
             && firstLine == 0 && lastLine == 0) {
             String str = stringDatum.toStr();
-            int idx = firstChar - 1;
+            // Director uses negative indices for "the last" (e.g., -30003)
+            int fc = firstChar < 0 ? str.length() : firstChar;
+            int idx = fc - 1;
             if (idx >= 0 && idx < str.length()) {
                 char c = str.charAt(idx);
                 ctx.push(c < 128 ? SINGLE_CHAR_DATUMS[c] : Datum.of(String.valueOf(c)));
@@ -137,8 +140,11 @@ public final class StringOpcodes {
             && firstItem == 0 && lastItem == 0
             && firstLine == 0 && lastLine == 0) {
             String str = stringDatum.toStr();
-            int start = firstChar - 1;
-            int end = Math.min(lastChar, str.length());
+            // Director uses negative indices for "the last" (e.g., -30003)
+            int fc = firstChar < 0 ? str.length() : firstChar;
+            int lc = lastChar < 0 ? str.length() : lastChar;
+            int start = fc - 1;
+            int end = Math.min(lc, str.length());
             if (start >= 0 && start < str.length()) {
                 ctx.push(Datum.of(str.substring(start, end)));
             } else {
@@ -277,6 +283,9 @@ public final class StringOpcodes {
         // Fast path: CHAR type — directly compute byte range, zero record allocations.
         // Hot path for "put X after char Y of str" in replaceChunks.
         if (type == StringChunkType.CHAR) {
+            // Director uses negative chunk indices to mean "from the end"
+            if (first < 0) first = currentString.length();
+            if (last < 0) last = currentString.length();
             if (first < 1) first = 1;
             int effectiveLast = last == 0 ? first : last;
             int rangeStart, rangeEnd;
@@ -304,9 +313,14 @@ public final class StringOpcodes {
             return true;
         }
 
-        // General path: use ChunkExpr + existing methods
-        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
+        // General path — resolve negative indices ("the last") to actual count
         char itemDelimiter = getItemDelimiter();
+        if (first < 0 || last < 0) {
+            int count = StringChunkUtils.countChunks(currentString, type, itemDelimiter);
+            if (first < 0) first = count;
+            if (last < 0) last = count;
+        }
+        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
         String newString;
         switch (putType) {
             case 0:
@@ -373,6 +387,11 @@ public final class StringOpcodes {
         // Fast path: CHAR delete — directly compute range and delete, zero record allocations.
         // Hot path for "delete char X to Y of str" in replaceChunks.
         if (type == StringChunkType.CHAR) {
+            // Director uses negative chunk indices to mean "from the end":
+            // -30003 = the last char, -30002 = the last word, etc.
+            // Convert negative first/last to actual string positions.
+            if (first < 0) first = currentString.length();
+            if (last < 0) last = currentString.length();
             if (first < 1) first = 1;
             int effectiveLast = last == 0 ? first : last;
             if (first > currentString.length()) {
@@ -388,9 +407,14 @@ public final class StringOpcodes {
             return true;
         }
 
-        // General path
-        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
+        // General path — resolve negative indices ("the last") to actual count
         char itemDelimiter = getItemDelimiter();
+        if (first < 0 || last < 0) {
+            int count = StringChunkUtils.countChunks(currentString, type, itemDelimiter);
+            if (first < 0) first = count;
+            if (last < 0) last = count;
+        }
+        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
         String newString = stringByDeletingChunk(currentString, chunkExpr, itemDelimiter);
         setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newString));
 
@@ -447,6 +471,13 @@ public final class StringOpcodes {
     private static String resolveChunkRange(String str, StringChunkType chunkType,
                                             int first, int last, char itemDelimiter) {
         if (first == 0 && last == 0) return str;
+        // Director uses negative chunk indices to mean "from the end" (e.g., -30003 = the last char).
+        // Resolve to actual count before extraction.
+        if (first < 0 || last < 0) {
+            int count = StringChunkUtils.countChunks(str, chunkType, itemDelimiter);
+            if (first < 0) first = count;
+            if (last < 0) last = count;
+        }
         int effectiveLast = last == 0 ? first : last;
         if (first == effectiveLast) {
             return StringChunkUtils.getChunk(str, chunkType, first, itemDelimiter);
@@ -603,14 +634,14 @@ public final class StringOpcodes {
         // CHAR type has no delimiter — skip delimiter handling entirely.
         // This is the hot path for replaceChunks (delete char[1..N]).
         if (chunk.type() != StringChunkType.CHAR) {
+            // For LINE type, detect actual delimiter from the source string
+            String delim = (chunk.type() == StringChunkType.LINE) ? getLineDelimiter(str) : getChunkDelimiter(chunk.type(), itemDelimiter);
             // Try to consume trailing delimiter
             if (deleteEnd < str.length()) {
-                String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
                 if (delim.length() > 0 && str.startsWith(delim, deleteEnd)) {
                     deleteEnd += delim.length();
                 }
             } else if (deleteStart > 0) {
-                String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
                 if (delim.length() > 0 && str.substring(0, deleteStart).endsWith(delim)) {
                     deleteStart -= delim.length();
                 }
@@ -659,7 +690,10 @@ public final class StringOpcodes {
         if (first > chunks.size()) return null;
         if (last > chunks.size()) last = chunks.size();
 
-        String delimiter = getChunkDelimiter(type, itemDelimiter);
+        // For LINE type, detect the actual delimiter from the source string
+        // (may be \r, \n, or \r\n). Using a fixed \r\n causes off-by-one when
+        // the text uses single-char \r delimiters (e.g., "Staff HQ\r..." loses first char).
+        String delimiter = (type == StringChunkType.LINE) ? getLineDelimiter(str) : getChunkDelimiter(type, itemDelimiter);
         int start = 0;
         for (int i = 0; i < first - 1; i++) {
             start += chunks.get(i).length();
@@ -703,13 +737,23 @@ public final class StringOpcodes {
 
     /**
      * Get the delimiter string for a chunk type.
+     * For LINE type, requires the source string to detect the actual delimiter
+     * (which may be \r, \n, or \r\n depending on the text content).
      */
     private static String getChunkDelimiter(StringChunkType type, char itemDelimiter) {
         return switch (type) {
             case CHAR -> "";
             case WORD -> " ";
-            case LINE -> "\r\n";
+            case LINE -> "\r\n"; // default; callers with a source string should use getLineDelimiter()
             case ITEM -> String.valueOf(itemDelimiter);
         };
+    }
+
+    /**
+     * Get the actual line delimiter for a given string.
+     * Uses the same detection as splitIntoChunks to ensure consistent behavior.
+     */
+    private static String getLineDelimiter(String str) {
+        return StringChunkUtils.pickLineDelimiter(str);
     }
 }

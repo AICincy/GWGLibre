@@ -8,7 +8,7 @@
 var _origLog = console.log;
 console.log = function() {
     var msg = Array.prototype.slice.call(arguments).join(' ');
-    if (msg.indexOf('[EventDispatcher]') >= 0 || msg.indexOf('[HitTest]') >= 0) {
+    if (msg.indexOf('[EventDispatcher]') >= 0 || msg.indexOf('[HitTest]') >= 0 || msg.indexOf('[DEBUG') >= 0) {
         self.postMessage({ type: 'debugLog', msg: msg });
     }
 };

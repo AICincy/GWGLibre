@@ -289,6 +289,36 @@ tasks.register('runWasmWebSocketTest', Exec) {
 }
 
 // ---------------------------------------------------------------------------
+// Habbo Navigator SSO login test.
+// Loads the Habbo DCR with sw6 SSO ticket param, verifies the Hotel Navigator
+// appears and renders with correct ink colours (teal headers, orange buttons).
+//
+// Usage:
+//   ./gradlew :player-wasm:runWasmNavigatorTest
+//   ./gradlew :player-wasm:runWasmNavigatorTest -PoutputDir=C:/tmp/nav-test
+// ---------------------------------------------------------------------------
+tasks.register('runWasmNavigatorTest', Exec) {
+    group       = 'verification'
+    description = 'Test Habbo Navigator with SSO login in headless Chromium'
+    dependsOn 'assembleWasm', 'npmInstall'
+
+    def distPath  = layout.buildDirectory.dir('dist').get().asFile.absolutePath
+    def dcrFile   = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
+    def castDir   = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
+    def outputDir = project.findProperty('outputDir') ?: ''
+
+    commandLine 'node',
+        file('src/test/js/wasm-navigator-test.js').absolutePath,
+        distPath,
+        dcrFile,
+        castDir,
+        outputDir
+
+    standardOutput = System.out
+    errorOutput    = System.err
+}
+
+// ---------------------------------------------------------------------------
 // Mobiles Disco DCR integration test.
 // Loads the Director 5.19 Mobiles Disco movie through the WASM pipeline
 // and verifies it renders with non-trivial pixel content.
