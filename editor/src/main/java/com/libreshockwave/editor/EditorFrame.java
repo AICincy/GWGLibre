@@ -164,8 +164,18 @@ public class EditorFrame extends JFrame {
             "dir", "dxr", "dcr", "cct", "cst"
         ));
 
+        String lastDir = Preferences.get().getLastOpenDirectory();
+        if (lastDir != null) {
+            java.io.File dir = new java.io.File(lastDir);
+            if (dir.isDirectory()) {
+                chooser.setCurrentDirectory(dir);
+            }
+        }
+
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            context.openFile(chooser.getSelectedFile().toPath());
+            java.io.File selected = chooser.getSelectedFile();
+            Preferences.get().setLastOpenDirectory(selected.getParent());
+            context.openFile(selected.toPath());
         }
     }
 
