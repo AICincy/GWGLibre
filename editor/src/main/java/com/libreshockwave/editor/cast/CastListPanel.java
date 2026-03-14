@@ -25,6 +25,10 @@ public class CastListPanel extends JPanel {
         listModel.addElement(display);
     }
 
+    public JList<String> getList() {
+        return list;
+    }
+
     public void clearMembers() {
         listModel.clear();
     }

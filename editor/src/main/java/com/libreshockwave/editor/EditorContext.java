@@ -1,9 +1,11 @@
 package com.libreshockwave.editor;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.editor.audio.EditorAudioBackend;
+import com.libreshockwave.editor.selection.SelectionManager;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.PlayerState;
-import com.libreshockwave.editor.selection.SelectionManager;
+import com.libreshockwave.player.debug.DebugController;
 
 import javax.swing.*;
 import java.beans.PropertyChangeListener;
@@ -12,7 +14,7 @@ import java.nio.file.Path;
 
 /**
  * Central shared state for the editor.
- * Holds the current DirectorFile, Player, selection state, and playback timer.
+ * Holds the current DirectorFile, Player, DebugController, selection state, and playback timer.
  * All panels observe this via PropertyChangeEvents.
  */
 public class EditorContext {
@@ -26,6 +28,7 @@ public class EditorContext {
 
     private DirectorFile file;
     private Player player;
+    private DebugController debugController;
     private Timer playbackTimer;
     private int currentFrame = 1;
     private Path currentPath;
@@ -50,6 +53,10 @@ public class EditorContext {
         return player;
     }
 
+    public DebugController getDebugController() {
+        return debugController;
+    }
+
     public int getCurrentFrame() {
         return currentFrame;
     }
@@ -65,9 +72,18 @@ public class EditorContext {
             Player newPlayer = new Player(newFile);
             this.currentPath = path;
 
+            // Wire audio backend
+            newPlayer.setAudioBackend(new EditorAudioBackend());
+
+            // Wire debug controller
+            DebugController newDebugController = new DebugController();
+            newPlayer.setDebugController(newDebugController);
+            newPlayer.setDebugEnabled(true);
+
             DirectorFile oldFile = this.file;
             this.file = newFile;
             this.player = newPlayer;
+            this.debugController = newDebugController;
             this.currentFrame = 1;
 
             pcs.firePropertyChange(PROP_FILE, oldFile, newFile);
@@ -86,6 +102,7 @@ public class EditorContext {
         DirectorFile oldFile = this.file;
         this.file = null;
         this.player = null;
+        this.debugController = null;
         this.currentPath = null;
         this.currentFrame = 1;
         selectionManager.clearSelection();

@@ -1,12 +1,14 @@
 package com.libreshockwave.editor;
 
+import com.libreshockwave.player.debug.DebugController;
+
 import javax.swing.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 
 /**
  * Director MX 2004 menu bar recreation.
- * Provides File, Edit, View, Insert, Modify, Control, Window, and Help menus.
+ * Provides File, Edit, View, Insert, Modify, Control, Debug, Window, and Help menus.
  */
 public class EditorMenuBar extends JMenuBar {
 
@@ -26,6 +28,7 @@ public class EditorMenuBar extends JMenuBar {
         add(buildInsertMenu());
         add(buildModifyMenu());
         add(buildControlMenu());
+        add(buildDebugMenu());
         add(buildWindowMenu());
         add(buildHelpMenu());
     }
@@ -244,6 +247,16 @@ public class EditorMenuBar extends JMenuBar {
         JMenu movieMenu = new JMenu("Movie");
         addStubItem(movieMenu, "Properties...");
         addStubItem(movieMenu, "Casts...");
+
+        JMenuItem extParams = new JMenuItem("External Parameters...");
+        extParams.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        extParams.addActionListener(e -> {
+            JFrame parentFrame = (JFrame) SwingUtilities.getWindowAncestor(this);
+            ExternalParamsDialog dialog = new ExternalParamsDialog(parentFrame, new java.util.LinkedHashMap<>());
+            dialog.setVisible(true);
+        });
+        movieMenu.add(extParams);
+
         menu.add(movieMenu);
 
         menu.addSeparator();
@@ -321,6 +334,54 @@ public class EditorMenuBar extends JMenuBar {
         return menu;
     }
 
+    // ---- Debug Menu ----
+
+    private JMenu buildDebugMenu() {
+        JMenu menu = new JMenu("Debug");
+        menu.setMnemonic(KeyEvent.VK_D);
+
+        JMenuItem stepInto = new JMenuItem("Step Into");
+        stepInto.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0));
+        stepInto.addActionListener(e -> {
+            DebugController dc = context.getDebugController();
+            if (dc != null) dc.stepInto();
+        });
+        menu.add(stepInto);
+
+        JMenuItem stepOver = new JMenuItem("Step Over");
+        stepOver.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0));
+        stepOver.addActionListener(e -> {
+            DebugController dc = context.getDebugController();
+            if (dc != null) dc.stepOver();
+        });
+        menu.add(stepOver);
+
+        JMenuItem stepOut = new JMenuItem("Step Out");
+        stepOut.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F11, InputEvent.SHIFT_DOWN_MASK));
+        stepOut.addActionListener(e -> {
+            DebugController dc = context.getDebugController();
+            if (dc != null) dc.stepOut();
+        });
+        menu.add(stepOut);
+
+        JMenuItem continueItem = new JMenuItem("Continue");
+        continueItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
+        continueItem.addActionListener(e -> {
+            DebugController dc = context.getDebugController();
+            if (dc != null) dc.continueExecution();
+        });
+        menu.add(continueItem);
+
+        menu.addSeparator();
+
+        JMenuItem toggleBp = new JMenuItem("Toggle Breakpoint");
+        toggleBp.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F9, 0));
+        toggleBp.setEnabled(false); // Breakpoints are toggled in the bytecode panel
+        menu.add(toggleBp);
+
+        return menu;
+    }
+
     // ---- Window Menu ----
 
     private JMenu buildWindowMenu() {
@@ -351,6 +412,7 @@ public class EditorMenuBar extends JMenuBar {
         addWindowToggle(menu, "Library Palette", 0, 0);
         addWindowToggle(menu, "Tool Palette", KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK);
         addWindowToggle(menu, "Markers", 0, 0);
+        addWindowToggle(menu, "Bytecode Debugger", KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
 
         menu.addSeparator();
 

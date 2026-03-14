@@ -77,6 +77,7 @@ public class EditorFrame extends JFrame {
         addPanel(new LibraryPaletteWindow(context));
         addPanel(new ToolPaletteWindow(context));
         addPanel(new MarkersWindow(context));
+        addPanel(new BytecodeDebuggerWindow(context));
     }
 
     private void addPanel(EditorPanel panel) {
@@ -111,6 +112,7 @@ public class EditorFrame extends JFrame {
         hidePanel("Behavior Inspector");
         hidePanel("Library Palette");
         hidePanel("Markers");
+        hidePanel("Bytecode Debugger");
 
         // Bring core panels to front in the right order
         try {
