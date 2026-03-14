@@ -1,24 +1,26 @@
 package com.libreshockwave.editor;
 
+import com.libreshockwave.editor.docking.DockingManager;
 import com.libreshockwave.editor.panel.*;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.beans.PropertyVetoException;
-import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Main editor window with JDesktopPane MDI container.
- * Creates and manages all panel windows.
+ * Main editor window with JDesktopPane MDI container and IDE-style docking.
+ * Panels can be docked to LEFT, RIGHT, or BOTTOM zones by dragging to edges
+ * or via right-click context menus.
  */
 public class EditorFrame extends JFrame {
 
     private final EditorContext context;
     private final JDesktopPane desktop;
     private final Map<String, EditorPanel> panels = new LinkedHashMap<>();
+    private DockingManager dockingManager;
 
     public EditorFrame() {
         super("LibreShockwave Editor - Director MX 2004");
@@ -30,23 +32,32 @@ public class EditorFrame extends JFrame {
         desktop = new JDesktopPane();
         desktop.setBackground(new Color(58, 68, 75));
 
-        // Layout: toolbar on top, desktop fills rest
+        // Create all panels (adds them to desktop)
+        createPanels();
+
+        // Docking manager wraps desktop in split panes for dock zones
+        dockingManager = new DockingManager(this, desktop, panels);
+
+        // Layout: toolbar on top, docking layout fills rest
         setLayout(new BorderLayout());
         add(new EditorToolBar(context), BorderLayout.NORTH);
-        add(desktop, BorderLayout.CENTER);
+        add(dockingManager.getComponent(), BorderLayout.CENTER);
 
         // Menu bar
-        setJMenuBar(new EditorMenuBar(this, context));
+        EditorMenuBar menuBar = new EditorMenuBar(this, context);
+        setJMenuBar(menuBar);
 
-        // Create all panels
-        createPanels();
+        // Arrange floating panels in default positions
         arrangeDefaultLayout();
 
-        // Update title on file open/close
+        // Wire the DetailedStackWindow as a debug listener when files open/close
         context.addPropertyChangeListener(evt -> {
             if (EditorContext.PROP_FILE.equals(evt.getPropertyName())) {
                 if (evt.getNewValue() != null && context.getCurrentPath() != null) {
                     setTitle("LibreShockwave Editor - " + context.getCurrentPath().getFileName());
+                    if (context.getDebugController() != null) {
+                        context.getDebugController().addListener(menuBar.getDetailedStackWindow());
+                    }
                 } else {
                     setTitle("LibreShockwave Editor - Director MX 2004");
                 }
@@ -59,6 +70,10 @@ public class EditorFrame extends JFrame {
 
     public EditorContext getContext() {
         return context;
+    }
+
+    public DockingManager getDockingManager() {
+        return dockingManager;
     }
 
     private void createPanels() {
@@ -151,16 +166,9 @@ public class EditorFrame extends JFrame {
         }
     }
 
+    /** Toggle panel visibility, handling both docked and floating states. */
     public void togglePanel(String title, boolean visible) {
-        EditorPanel panel = panels.get(title);
-        if (panel != null) {
-            panel.setVisible(visible);
-            if (visible) {
-                try {
-                    panel.setSelected(true);
-                } catch (PropertyVetoException ignored) {}
-            }
-        }
+        dockingManager.togglePanel(title, visible);
     }
 
     public void tileWindows() {

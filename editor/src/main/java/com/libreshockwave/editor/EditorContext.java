@@ -6,11 +6,14 @@ import com.libreshockwave.editor.selection.SelectionManager;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.PlayerState;
 import com.libreshockwave.player.debug.DebugController;
+import com.libreshockwave.player.debug.DebugSnapshot;
+import com.libreshockwave.player.debug.DebugStateListener;
 
 import javax.swing.*;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.nio.file.Path;
+import java.util.prefs.Preferences;
 
 /**
  * Central shared state for the editor.
@@ -23,6 +26,9 @@ public class EditorContext {
     public static final String PROP_FRAME = "currentFrame";
     public static final String PROP_PLAYING = "playing";
 
+    private static final String PREF_BREAKPOINTS_PREFIX = "breakpoints:";
+    private final Preferences prefs = Preferences.userNodeForPackage(EditorContext.class);
+
     private final PropertyChangeSupport pcs = new PropertyChangeSupport(this);
     private final SelectionManager selectionManager = new SelectionManager();
 
@@ -32,6 +38,8 @@ public class EditorContext {
     private Timer playbackTimer;
     private int currentFrame = 1;
     private Path currentPath;
+    private String currentMovieKey;
+    private Runnable castLoadedCallback;
 
     public void addPropertyChangeListener(PropertyChangeListener listener) {
         pcs.addPropertyChangeListener(listener);
@@ -65,6 +73,10 @@ public class EditorContext {
         return currentPath;
     }
 
+    public void setCastLoadedCallback(Runnable callback) {
+        this.castLoadedCallback = callback;
+    }
+
     public void openFile(Path path) {
         closeFile();
         try {
@@ -80,13 +92,42 @@ public class EditorContext {
             newPlayer.setDebugController(newDebugController);
             newPlayer.setDebugEnabled(true);
 
+            // Listen for breakpoint changes to save them
+            newDebugController.addListener(new DebugStateListener() {
+                @Override
+                public void onPaused(DebugSnapshot snapshot) {}
+                @Override
+                public void onResumed() {}
+                @Override
+                public void onBreakpointsChanged() {
+                    saveBreakpoints();
+                }
+            });
+
             DirectorFile oldFile = this.file;
             this.file = newFile;
             this.player = newPlayer;
             this.debugController = newDebugController;
             this.currentFrame = 1;
+            this.currentMovieKey = path.toAbsolutePath().toString();
 
             pcs.firePropertyChange(PROP_FILE, oldFile, newFile);
+
+            // Load saved breakpoints for this movie
+            loadBreakpoints(currentMovieKey);
+
+            // Preload all external casts so their scripts are available for debugging
+            newPlayer.preloadAllCasts();
+
+            // Refresh debugger when external casts finish loading
+            newPlayer.setCastLoadedListener(() -> {
+                SwingUtilities.invokeLater(() -> {
+                    if (castLoadedCallback != null) {
+                        castLoadedCallback.run();
+                    }
+                });
+            });
+
         } catch (Exception e) {
             JOptionPane.showMessageDialog(null,
                 "Failed to load file: " + e.getMessage(),
@@ -104,6 +145,7 @@ public class EditorContext {
         this.player = null;
         this.debugController = null;
         this.currentPath = null;
+        this.currentMovieKey = null;
         this.currentFrame = 1;
         selectionManager.clearSelection();
         if (oldFile != null) {
@@ -125,9 +167,17 @@ public class EditorContext {
 
     public void play() {
         if (player == null) return;
-        player.play();
+
+        // Start rendering timer immediately
         startPlaybackTimer();
         pcs.firePropertyChange(PROP_PLAYING, false, true);
+
+        // Run prepareMovie async so debugger pauses don't freeze UI
+        player.playAsync(() -> {
+            SwingUtilities.invokeLater(() -> {
+                // State updated via timer
+            });
+        });
     }
 
     public void stop() {
@@ -147,10 +197,13 @@ public class EditorContext {
 
     public void stepForward() {
         if (player == null) return;
-        player.stepFrame();
-        int oldFrame = currentFrame;
-        currentFrame = player.getCurrentFrame();
-        pcs.firePropertyChange(PROP_FRAME, oldFrame, currentFrame);
+        player.stepFrameAsync(() -> {
+            SwingUtilities.invokeLater(() -> {
+                int oldFrame = currentFrame;
+                currentFrame = player.getCurrentFrame();
+                pcs.firePropertyChange(PROP_FRAME, oldFrame, currentFrame);
+            });
+        });
     }
 
     public void stepBackward() {
@@ -171,17 +224,39 @@ public class EditorContext {
         }
         int delay = 1000 / player.getTempo();
         playbackTimer = new Timer(delay, e -> {
-            if (player == null || player.getState() != PlayerState.PLAYING) {
+            if (player == null) {
                 stopPlayback();
                 return;
             }
-            if (player.tick()) {
-                int oldFrame = currentFrame;
-                currentFrame = player.getCurrentFrame();
-                pcs.firePropertyChange(PROP_FRAME, oldFrame, currentFrame);
+
+            // Don't advance frame while debugger is paused
+            if (debugController != null && debugController.isPaused()) {
+                return;
+            }
+
+            if (player.isVmRunning()) {
+                // VM is busy — still fire frame change for repaint
+                pcs.firePropertyChange(PROP_FRAME, currentFrame, currentFrame);
+            } else {
+                player.tickAsync(() -> {
+                    SwingUtilities.invokeLater(() -> {
+                        int oldFrame = currentFrame;
+                        currentFrame = player.getCurrentFrame();
+                        pcs.firePropertyChange(PROP_FRAME, oldFrame, currentFrame);
+                        updateTimerDelay();
+                    });
+                });
             }
         });
         playbackTimer.start();
+    }
+
+    private void updateTimerDelay() {
+        if (playbackTimer == null || player == null) return;
+        int newDelay = 1000 / player.getTempo();
+        if (newDelay != playbackTimer.getDelay()) {
+            playbackTimer.setDelay(newDelay);
+        }
     }
 
     private void stopPlayback() {
@@ -189,5 +264,40 @@ public class EditorContext {
             playbackTimer.stop();
             playbackTimer = null;
         }
+    }
+
+    // Breakpoint persistence
+
+    private void saveBreakpoints() {
+        if (currentMovieKey == null || currentMovieKey.isEmpty()) return;
+        String serialized = debugController.serializeBreakpoints();
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(currentMovieKey);
+        if (serialized.isEmpty()) {
+            prefs.remove(prefKey);
+        } else {
+            prefs.put(prefKey, serialized);
+        }
+    }
+
+    private void loadBreakpoints(String movieKey) {
+        if (movieKey == null || movieKey.isEmpty()) return;
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(movieKey);
+        String serialized = prefs.get(prefKey, "");
+        if (!serialized.isEmpty()) {
+            debugController.deserializeBreakpoints(serialized);
+        }
+    }
+
+    public void clearSavedBreakpoints() {
+        if (currentMovieKey == null || currentMovieKey.isEmpty()) return;
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(currentMovieKey);
+        prefs.remove(prefKey);
+    }
+
+    private String sanitizeKey(String key) {
+        if (key.length() > 80) {
+            return "hash_" + key.hashCode();
+        }
+        return key.replace("/", "_").replace("\\", "_").replace(":", "_");
     }
 }

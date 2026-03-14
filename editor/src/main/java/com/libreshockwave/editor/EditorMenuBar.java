@@ -1,5 +1,7 @@
 package com.libreshockwave.editor;
 
+import com.libreshockwave.editor.panel.DetailedStackWindow;
+import com.libreshockwave.player.Player;
 import com.libreshockwave.player.debug.DebugController;
 
 import javax.swing.*;
@@ -14,11 +16,17 @@ public class EditorMenuBar extends JMenuBar {
 
     private final EditorFrame editorFrame;
     private final EditorContext context;
+    private final DetailedStackWindow detailedStackWindow;
 
     public EditorMenuBar(EditorFrame editorFrame, EditorContext context) {
         this.editorFrame = editorFrame;
         this.context = context;
+        this.detailedStackWindow = new DetailedStackWindow();
         buildMenus();
+    }
+
+    public DetailedStackWindow getDetailedStackWindow() {
+        return detailedStackWindow;
     }
 
     private void buildMenus() {
@@ -379,7 +387,54 @@ public class EditorMenuBar extends JMenuBar {
         toggleBp.setEnabled(false); // Breakpoints are toggled in the bytecode panel
         menu.add(toggleBp);
 
+        JMenuItem clearBp = new JMenuItem("Clear All Breakpoints");
+        clearBp.addActionListener(e -> {
+            DebugController dc = context.getDebugController();
+            if (dc != null) {
+                dc.clearAllBreakpoints();
+                context.clearSavedBreakpoints();
+            }
+        });
+        menu.add(clearBp);
+
+        menu.addSeparator();
+
+        JCheckBoxMenuItem detailedStackItem = new JCheckBoxMenuItem("Detailed Stack Window", false);
+        detailedStackItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        detailedStackItem.addActionListener(e -> detailedStackWindow.setVisible(detailedStackItem.isSelected()));
+        menu.add(detailedStackItem);
+
+        JMenuItem traceItem = new JMenuItem("Trace Handler...");
+        traceItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        traceItem.addActionListener(e -> showTraceHandlerDialog());
+        menu.add(traceItem);
+
         return menu;
+    }
+
+    private void showTraceHandlerDialog() {
+        Player player = context.getPlayer();
+        if (player == null) {
+            JOptionPane.showMessageDialog(editorFrame, "No movie loaded.", "Trace Handler", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        var vm = player.getVM();
+        var current = vm.getTracedHandlers();
+        String currentStr = current.isEmpty() ? "" : String.join(", ", current);
+        String input = JOptionPane.showInputDialog(editorFrame,
+            "Enter handler names to trace (comma-separated), or clear to remove all:\n" +
+            "Current: " + (currentStr.isEmpty() ? "(none)" : currentStr),
+            "Trace Handler", JOptionPane.PLAIN_MESSAGE);
+        if (input == null) return;
+        vm.clearTraceHandlers();
+        if (!input.isBlank()) {
+            for (String name : input.split(",")) {
+                String trimmed = name.trim();
+                if (!trimmed.isEmpty()) {
+                    vm.addTraceHandler(trimmed);
+                }
+            }
+        }
     }
 
     // ---- Window Menu ----
@@ -424,6 +479,17 @@ public class EditorMenuBar extends JMenuBar {
         JMenuItem cascade = new JMenuItem("Cascade");
         cascade.addActionListener(e -> editorFrame.cascadeWindows());
         menu.add(cascade);
+
+        menu.addSeparator();
+
+        // Docking layout
+        JMenuItem dockedLayout = new JMenuItem("IDE Docked Layout");
+        dockedLayout.addActionListener(e -> editorFrame.getDockingManager().applyDefaultDockedLayout());
+        menu.add(dockedLayout);
+
+        JMenuItem floatingLayout = new JMenuItem("Floating Layout (Classic)");
+        floatingLayout.addActionListener(e -> editorFrame.getDockingManager().undockAll());
+        menu.add(floatingLayout);
 
         return menu;
     }
