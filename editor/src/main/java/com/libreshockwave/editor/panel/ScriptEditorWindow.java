@@ -24,7 +24,7 @@ public class ScriptEditorWindow extends EditorPanel {
     private final JComboBox<String> handlerDropdown;
 
     public ScriptEditorWindow(EditorContext context) {
-        super("Script", context, true, true, true, true);
+        super("script", "Script", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -70,7 +70,7 @@ public class ScriptEditorWindow extends EditorPanel {
 
         if (script != null) {
             String scriptType = ScriptFormatUtils.getScriptTypeName(script.getScriptType());
-            // Title stays "Script" for docking compatibility
+            setTitle("Script: " + memberName);
 
             // Populate handler dropdown
             handlerDropdown.removeAllItems();

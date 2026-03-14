@@ -46,7 +46,7 @@ public class CastWindow extends EditorPanel {
     private SwingWorker<Void, ThumbnailResult> thumbnailWorker;
 
     public CastWindow(EditorContext context) {
-        super("Cast", context, true, true, true, true);
+        super("cast", "Cast", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -351,22 +351,22 @@ public class CastWindow extends EditorPanel {
         EditorFrame editorFrame = getEditorFrame();
         if (editorFrame == null) return;
 
-        // Map member type to the right editor window
-        String panelTitle = switch (info.memberType()) {
-            case BITMAP, PICTURE -> "Paint";
-            case TEXT, RICH_TEXT, BUTTON -> "Text";
-            case SCRIPT -> "Script";
-            case SOUND -> "Sound";
-            case SHAPE -> "Vector Shape";
+        // Map member type to the right editor window by panelId
+        String panelId = switch (info.memberType()) {
+            case BITMAP, PICTURE -> "paint";
+            case TEXT, RICH_TEXT, BUTTON -> "text";
+            case SCRIPT -> "script";
+            case SOUND -> "sound";
+            case SHAPE -> "vector-shape";
             default -> null;
         };
-        if (panelTitle == null) return;
+        if (panelId == null) return;
 
         // Show the panel (handles docked/floating/hidden)
-        editorFrame.showPanel(panelTitle);
+        editorFrame.showPanel(panelId);
 
         // Load the member into the panel
-        EditorPanel panel = editorFrame.getPanel(panelTitle);
+        EditorPanel panel = editorFrame.getPanel(panelId);
         if (panel instanceof PaintWindow pw) pw.loadMember(info);
         else if (panel instanceof TextEditorWindow tw) tw.loadMember(info);
         else if (panel instanceof FieldEditorWindow fw) fw.loadMember(info);

@@ -102,7 +102,7 @@ public class EditorFrame extends JFrame {
     }
 
     private void addPanel(EditorPanel panel) {
-        panels.put(panel.getTitle(), panel);
+        panels.put(panel.getPanelId(), panel);
         desktop.add(panel);
         panel.setVisible(true);
     }
@@ -112,39 +112,39 @@ public class EditorFrame extends JFrame {
      */
     private void arrangeDefaultLayout() {
         // Core panels visible and positioned
-        setPanel("Stage", 170, 10, 660, 500);
-        setPanel("Score", 170, 520, 700, 300);
-        setPanel("Cast", 880, 520, 400, 300);
-        setPanel("Property Inspector", 880, 10, 280, 400);
-        setPanel("Script", 170, 520, 500, 400);
-        setPanel("Message", 880, 420, 400, 200);
-        setPanel("Tool Palette", 5, 10, 160, 350);
+        setPanel("stage", 170, 10, 660, 500);
+        setPanel("score", 170, 520, 700, 300);
+        setPanel("cast", 880, 520, 400, 300);
+        setPanel("property-inspector", 880, 10, 280, 400);
+        setPanel("script", 170, 520, 500, 400);
+        setPanel("message", 880, 420, 400, 200);
+        setPanel("tool-palette", 5, 10, 160, 350);
 
         // Media and advanced panels - hidden by default
-        hidePanel("Paint");
-        hidePanel("Vector Shape");
-        hidePanel("Text");
-        hidePanel("Field");
-        hidePanel("Sound");
-        hidePanel("Color Palettes");
-        hidePanel("Bytecode Debugger");
+        hidePanel("paint");
+        hidePanel("vector-shape");
+        hidePanel("text");
+        hidePanel("field");
+        hidePanel("sound");
+        hidePanel("color-palettes");
+        hidePanel("bytecode-debugger");
 
         try {
-            EditorPanel stage = panels.get("Stage");
+            EditorPanel stage = panels.get("stage");
             if (stage != null) stage.setSelected(true);
         } catch (PropertyVetoException ignored) {}
     }
 
-    private void setPanel(String title, int x, int y, int w, int h) {
-        EditorPanel panel = panels.get(title);
+    private void setPanel(String panelId, int x, int y, int w, int h) {
+        EditorPanel panel = panels.get(panelId);
         if (panel != null) {
             panel.setBounds(x, y, w, h);
             panel.setVisible(true);
         }
     }
 
-    private void hidePanel(String title) {
-        EditorPanel panel = panels.get(title);
+    private void hidePanel(String panelId) {
+        EditorPanel panel = panels.get(panelId);
         if (panel != null) {
             panel.setVisible(false);
         }
@@ -176,35 +176,32 @@ public class EditorFrame extends JFrame {
     }
 
     /**
-     * Toggle panel visibility. Opening a closed panel docks it to center.
+     * Toggle panel visibility by panelId. Opening a closed panel docks it to center.
      * Closing a panel undocks it first (resetting the view) then hides.
      */
-    public void togglePanel(String title, boolean visible) {
+    public void togglePanel(String panelId, boolean visible) {
         if (!visible) {
-            // Closing: undock if docked (resets view), then hide
-            if (dockingManager.isDocked(title)) {
-                dockingManager.undock(title);
+            if (dockingManager.isDocked(panelId)) {
+                dockingManager.undock(panelId);
             }
-            EditorPanel panel = panels.get(title);
+            EditorPanel panel = panels.get(panelId);
             if (panel != null) panel.setVisible(false);
         } else {
-            // Opening: dock to center
-            dockingManager.dockCenter(title);
+            dockingManager.dockCenter(panelId);
         }
     }
 
-    /** Get a panel by title. */
-    public EditorPanel getPanel(String title) {
-        return panels.get(title);
+    /** Get a panel by panelId. */
+    public EditorPanel getPanel(String panelId) {
+        return panels.get(panelId);
     }
 
     /** Show a panel, whether it's docked, floating, or hidden. */
-    public void showPanel(String title) {
-        if (dockingManager.isDocked(title)) {
-            // Already docked — select its tab
-            dockingManager.togglePanel(title, true);
+    public void showPanel(String panelId) {
+        if (dockingManager.isDocked(panelId)) {
+            dockingManager.togglePanel(panelId, true);
         } else {
-            EditorPanel panel = panels.get(title);
+            EditorPanel panel = panels.get(panelId);
             if (panel != null) {
                 panel.setVisible(true);
                 try {
@@ -216,9 +213,9 @@ public class EditorFrame extends JFrame {
     }
 
     /** Check if a panel is currently visible (floating or docked). */
-    public boolean isPanelVisible(String title) {
-        if (dockingManager.isDocked(title)) return true;
-        EditorPanel panel = panels.get(title);
+    public boolean isPanelVisible(String panelId) {
+        if (dockingManager.isDocked(panelId)) return true;
+        EditorPanel panel = panels.get(panelId);
         return panel != null && panel.isVisible();
     }
 

@@ -19,7 +19,7 @@ public class FieldEditorWindow extends EditorPanel {
     private final JLabel statusLabel;
 
     public FieldEditorWindow(EditorContext context) {
-        super("Field", context, true, true, true, true);
+        super("field", "Field", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -58,6 +58,7 @@ public class FieldEditorWindow extends EditorPanel {
             textArea.setText(text);
             textArea.setCaretPosition(0);
             String name = info.name() != null && !info.name().isEmpty() ? info.name() : "#" + info.memberNum();
+            setTitle("Field: " + name);
             statusLabel.setText(" " + name + "  " + text.length() + " characters");
         } else {
             textArea.setText("[Field data not found]");

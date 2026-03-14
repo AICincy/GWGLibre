@@ -64,8 +64,8 @@ public class LayoutPersistence {
         } else if (node instanceof DockLeaf leaf) {
             obj.addProperty("type", "leaf");
             JsonArray tabs = new JsonArray();
-            for (String title : leaf.getTitles()) {
-                tabs.add(title);
+            for (String id : leaf.getPanelIds()) {
+                tabs.add(id);
             }
             obj.add("tabs", tabs);
 
@@ -73,8 +73,8 @@ public class LayoutPersistence {
             obj.addProperty("type", "center");
             if (center.hasCenterTabs()) {
                 JsonArray tabs = new JsonArray();
-                for (String title : center.getCenterTitles()) {
-                    tabs.add(title);
+                for (String id : center.getCenterPanelIds()) {
+                    tabs.add(id);
                 }
                 obj.add("centerTabs", tabs);
             }

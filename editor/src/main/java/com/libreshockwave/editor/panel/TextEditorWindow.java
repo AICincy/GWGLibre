@@ -19,7 +19,7 @@ public class TextEditorWindow extends EditorPanel {
     private final JLabel statusLabel;
 
     public TextEditorWindow(EditorContext context) {
-        super("Text", context, true, true, true, true);
+        super("text", "Text", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -63,6 +63,7 @@ public class TextEditorWindow extends EditorPanel {
             textPane.setText(text);
             textPane.setCaretPosition(0);
             String name = info.name() != null && !info.name().isEmpty() ? info.name() : "#" + info.memberNum();
+            setTitle("Text: " + name);
             statusLabel.setText(" " + name + "  " + textChunk.runs().size() + " formatting run(s)");
         } else {
             textPane.setText("[Text data not found]");

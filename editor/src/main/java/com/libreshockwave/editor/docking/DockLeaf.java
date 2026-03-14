@@ -8,11 +8,12 @@ import java.util.List;
 /**
  * A leaf node containing a JTabbedPane with one or more docked panels.
  * Multiple panels in the same leaf are shown as tabs (space-efficient).
+ * Internally tracks panels by panelId; displays human-readable titles on tabs.
  */
 public final class DockLeaf implements DockNode {
 
     private final JTabbedPane tabs;
-    private final List<String> panelTitles = new ArrayList<>();
+    private final List<String> panelIds = new ArrayList<>();
     private DockingManager manager;
 
     public DockLeaf() {
@@ -33,41 +34,41 @@ public final class DockLeaf implements DockNode {
         return tabs;
     }
 
-    public void addTab(String title, Container content) {
-        panelTitles.add(title);
+    public void addTab(String panelId, String displayTitle, Container content) {
+        panelIds.add(panelId);
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(content, BorderLayout.CENTER);
-        tabs.addTab(title, wrapper);
-        tabs.setTabComponentAt(tabs.getTabCount() - 1, createTabLabel(title));
+        tabs.addTab(displayTitle, wrapper);
+        tabs.setTabComponentAt(tabs.getTabCount() - 1, createTabLabel(panelId, displayTitle));
         tabs.setSelectedIndex(tabs.getTabCount() - 1);
     }
 
-    public void removeTab(String title) {
-        int idx = panelTitles.indexOf(title);
+    public void removeTab(String panelId) {
+        int idx = panelIds.indexOf(panelId);
         if (idx >= 0) {
-            panelTitles.remove(idx);
+            panelIds.remove(idx);
             tabs.removeTabAt(idx);
         }
     }
 
     public boolean isEmpty() {
-        return panelTitles.isEmpty();
+        return panelIds.isEmpty();
     }
 
     public int getTabCount() {
-        return panelTitles.size();
+        return panelIds.size();
     }
 
-    public List<String> getTitles() {
-        return List.copyOf(panelTitles);
+    public List<String> getPanelIds() {
+        return List.copyOf(panelIds);
     }
 
-    public boolean hasTab(String title) {
-        return panelTitles.contains(title);
+    public boolean hasTab(String panelId) {
+        return panelIds.contains(panelId);
     }
 
-    public void selectTab(String title) {
-        int idx = panelTitles.indexOf(title);
+    public void selectTab(String panelId) {
+        int idx = panelIds.indexOf(panelId);
         if (idx >= 0) {
             tabs.setSelectedIndex(idx);
         }
@@ -82,10 +83,10 @@ public final class DockLeaf implements DockNode {
         return (Container) wrapper.getComponent(0);
     }
 
-    private JPanel createTabLabel(String title) {
+    private JPanel createTabLabel(String panelId, String displayTitle) {
         JPanel tab = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         tab.setOpaque(false);
-        tab.add(new JLabel(title));
+        tab.add(new JLabel(displayTitle));
 
         JButton closeBtn = new JButton("\u00d7");
         closeBtn.setMargin(new Insets(0, 2, 0, 2));
@@ -95,7 +96,7 @@ public final class DockLeaf implements DockNode {
         closeBtn.setFocusable(false);
         closeBtn.setToolTipText("Float");
         closeBtn.addActionListener(e -> {
-            if (manager != null) manager.undockAndShow(title);
+            if (manager != null) manager.undockAndShow(panelId);
         });
         tab.add(closeBtn);
 
@@ -115,9 +116,9 @@ public final class DockLeaf implements DockNode {
             private void popup(java.awt.event.MouseEvent e) {
                 if (!e.isPopupTrigger() || manager == null) return;
                 int idx = tabs.indexAtLocation(e.getX(), e.getY());
-                if (idx < 0) return;
-                String title = tabs.getTitleAt(idx);
-                manager.showTabContextMenu(DockLeaf.this, title, tabs, e.getX(), e.getY());
+                if (idx < 0 || idx >= panelIds.size()) return;
+                String panelId = panelIds.get(idx);
+                manager.showTabContextMenu(DockLeaf.this, panelId, tabs, e.getX(), e.getY());
             }
         });
     }

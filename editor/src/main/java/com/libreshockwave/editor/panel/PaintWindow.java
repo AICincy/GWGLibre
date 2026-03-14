@@ -19,7 +19,7 @@ public class PaintWindow extends EditorPanel {
     private final JLabel statusLabel;
 
     public PaintWindow(EditorContext context) {
-        super("Paint", context, true, true, true, true);
+        super("paint", "Paint", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -67,6 +67,7 @@ public class PaintWindow extends EditorPanel {
             imageLabel.setIcon(new ImageIcon(image));
             imageLabel.setText(null);
             String name = info.name() != null && !info.name().isEmpty() ? info.name() : "#" + info.memberNum();
+            setTitle("Paint: " + name);
             int bitDepth = 0;
             try {
                 bitDepth = BitmapInfo.parse(info.member().specificData()).bitDepth();

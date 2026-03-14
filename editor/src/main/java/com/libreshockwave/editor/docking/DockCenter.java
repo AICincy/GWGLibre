@@ -12,13 +12,14 @@ import java.util.List;
  * Supports optional center-docked tabs: when panels are docked to center,
  * they appear as tabs alongside a "Stage" tab containing the desktop.
  * When no center panels are docked, the desktop is shown directly (no tab bar).
+ * Internally tracks panels by panelId; displays human-readable titles on tabs.
  */
 public final class DockCenter implements DockNode {
 
     private final JDesktopPane desktop;
     private final JPanel wrapper = new JPanel(new BorderLayout());
     private JTabbedPane tabs;
-    private final List<String> panelTitles = new ArrayList<>();
+    private final List<String> panelIds = new ArrayList<>();
     private DockingManager manager;
 
     public DockCenter(JDesktopPane desktop) {
@@ -40,8 +41,8 @@ public final class DockCenter implements DockNode {
     }
 
     /** Add a panel as a center tab. */
-    public void addTab(String title, Container content) {
-        panelTitles.add(title);
+    public void addTab(String panelId, String displayTitle, Container content) {
+        panelIds.add(panelId);
 
         if (tabs == null) {
             // Switch from bare desktop to tabbed mode
@@ -53,8 +54,8 @@ public final class DockCenter implements DockNode {
 
         JPanel tabContent = new JPanel(new BorderLayout());
         tabContent.add(content, BorderLayout.CENTER);
-        tabs.addTab(title, tabContent);
-        tabs.setTabComponentAt(tabs.getTabCount() - 1, createTabLabel(title));
+        tabs.addTab(displayTitle, tabContent);
+        tabs.setTabComponentAt(tabs.getTabCount() - 1, createTabLabel(panelId, displayTitle));
         tabs.setSelectedIndex(tabs.getTabCount() - 1);
 
         wrapper.revalidate();
@@ -62,8 +63,8 @@ public final class DockCenter implements DockNode {
     }
 
     /** Remove a center-docked tab. Returns the content container, or null. */
-    public Container removeTab(String title) {
-        int idx = panelTitles.indexOf(title);
+    public Container removeTab(String panelId) {
+        int idx = panelIds.indexOf(panelId);
         if (idx < 0) return null;
 
         // Tab index is idx+1 because tab 0 is always "Stage"
@@ -72,9 +73,9 @@ public final class DockCenter implements DockNode {
         Container content = (Container) tabContent.getComponent(0);
         tabContent.remove(content);
         tabs.removeTabAt(tabIdx);
-        panelTitles.remove(idx);
+        panelIds.remove(idx);
 
-        if (panelTitles.isEmpty()) {
+        if (panelIds.isEmpty()) {
             // Switch back to bare desktop (no tab bar)
             wrapper.remove(tabs);
             tabs = null;
@@ -86,24 +87,24 @@ public final class DockCenter implements DockNode {
         return content;
     }
 
-    public boolean hasTab(String title) {
-        return panelTitles.contains(title);
+    public boolean hasTab(String panelId) {
+        return panelIds.contains(panelId);
     }
 
-    public void selectTab(String title) {
+    public void selectTab(String panelId) {
         if (tabs == null) return;
-        int idx = panelTitles.indexOf(title);
+        int idx = panelIds.indexOf(panelId);
         if (idx >= 0) {
             tabs.setSelectedIndex(idx + 1);
         }
     }
 
     public boolean hasCenterTabs() {
-        return !panelTitles.isEmpty();
+        return !panelIds.isEmpty();
     }
 
-    public java.util.List<String> getCenterTitles() {
-        return java.util.List.copyOf(panelTitles);
+    public List<String> getCenterPanelIds() {
+        return List.copyOf(panelIds);
     }
 
     /** Get content at the given center panel index. */
@@ -114,10 +115,10 @@ public final class DockCenter implements DockNode {
         return (Container) tabContent.getComponent(0);
     }
 
-    private JPanel createTabLabel(String title) {
+    private JPanel createTabLabel(String panelId, String displayTitle) {
         JPanel tab = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         tab.setOpaque(false);
-        tab.add(new JLabel(title));
+        tab.add(new JLabel(displayTitle));
 
         JButton closeBtn = new JButton("\u00d7");
         closeBtn.setMargin(new Insets(0, 2, 0, 2));
@@ -127,7 +128,7 @@ public final class DockCenter implements DockNode {
         closeBtn.setFocusable(false);
         closeBtn.setToolTipText("Float");
         closeBtn.addActionListener(e -> {
-            if (manager != null) manager.undockAndShow(title);
+            if (manager != null) manager.undockAndShow(panelId);
         });
         tab.add(closeBtn);
 

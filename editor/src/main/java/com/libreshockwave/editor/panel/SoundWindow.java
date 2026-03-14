@@ -29,7 +29,7 @@ public class SoundWindow extends EditorPanel {
     private Timer playbackTimer;
 
     public SoundWindow(EditorContext context) {
-        super("Sound", context, true, true, true, true);
+        super("sound", "Sound", context, true, true, true, true);
 
         JPanel panel = new JPanel(new BorderLayout());
 
@@ -83,6 +83,7 @@ public class SoundWindow extends EditorPanel {
 
         SoundChunk soundChunk = MemberResolver.findSoundForMember(dirFile, info.member());
         String name = info.name() != null && !info.name().isEmpty() ? info.name() : "#" + info.memberNum();
+        setTitle("Sound: " + name);
         if (soundChunk != null) {
             StringBuilder sb = new StringBuilder();
             sb.append("Codec: ").append(soundChunk.isMp3() ? "MP3" : "PCM (16-bit)").append("\n");
