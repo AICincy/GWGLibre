@@ -96,6 +96,7 @@ public class EditorFrame extends JFrame {
         addPanel(new VectorShapeWindow(context));
         addPanel(new TextEditorWindow(context));
         addPanel(new FieldEditorWindow(context));
+        addPanel(new SoundWindow(context));
         addPanel(new ColorPalettesWindow(context));
         addPanel(new BytecodeDebuggerWindow(context));
     }
@@ -124,6 +125,7 @@ public class EditorFrame extends JFrame {
         hidePanel("Vector Shape");
         hidePanel("Text");
         hidePanel("Field");
+        hidePanel("Sound");
         hidePanel("Color Palettes");
         hidePanel("Bytecode Debugger");
 
@@ -188,6 +190,28 @@ public class EditorFrame extends JFrame {
         } else {
             // Opening: dock to center
             dockingManager.dockCenter(title);
+        }
+    }
+
+    /** Get a panel by title. */
+    public EditorPanel getPanel(String title) {
+        return panels.get(title);
+    }
+
+    /** Show a panel, whether it's docked, floating, or hidden. */
+    public void showPanel(String title) {
+        if (dockingManager.isDocked(title)) {
+            // Already docked — select its tab
+            dockingManager.togglePanel(title, true);
+        } else {
+            EditorPanel panel = panels.get(title);
+            if (panel != null) {
+                panel.setVisible(true);
+                try {
+                    if (panel.isIcon()) panel.setIcon(false);
+                    panel.setSelected(true);
+                } catch (PropertyVetoException ignored) {}
+            }
         }
     }
 

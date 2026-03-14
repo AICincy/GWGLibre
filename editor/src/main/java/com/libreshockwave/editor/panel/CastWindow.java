@@ -3,6 +3,7 @@ package com.libreshockwave.editor.panel;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.editor.EditorContext;
+import com.libreshockwave.editor.EditorFrame;
 import com.libreshockwave.editor.cast.CastGridPanel;
 import com.libreshockwave.editor.cast.CastListPanel;
 import com.libreshockwave.editor.cast.CastThumbnailRenderer;
@@ -291,7 +292,9 @@ public class CastWindow extends EditorPanel {
                 cell.setBorder(BorderFactory.createLineBorder(new Color(0, 102, 204), 2));
 
                 if (e.isPopupTrigger()) {
-                    showExportPopup(grid, e, info);
+                    showContextMenu(grid, e, info);
+                } else {
+                    openMemberEditor(info);
                 }
             }
         }
@@ -313,11 +316,12 @@ public class CastWindow extends EditorPanel {
                     CastMemberInfo info = filteredMembers.get(idx);
                     context.getSelectionManager().select(
                         SelectionEvent.castMember(0, info.memberNum()));
+                    openMemberEditor(info);
                 }
             }
         });
 
-        // Context menu on list
+        // Right-click context menu
         jList.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -339,12 +343,45 @@ public class CastWindow extends EditorPanel {
         if (idx >= 0 && idx < filteredMembers.size()) {
             jList.setSelectedIndex(idx);
             CastMemberInfo info = filteredMembers.get(idx);
-            showExportPopup(jList, e, info);
+            showContextMenu(jList, e, info);
         }
     }
 
-    private void showExportPopup(Component parent, MouseEvent e, CastMemberInfo info) {
+    private void openMemberEditor(CastMemberInfo info) {
+        EditorFrame editorFrame = getEditorFrame();
+        if (editorFrame == null) return;
+
+        // Map member type to the right editor window
+        String panelTitle = switch (info.memberType()) {
+            case BITMAP, PICTURE -> "Paint";
+            case TEXT, RICH_TEXT, BUTTON -> "Text";
+            case SCRIPT -> "Script";
+            case SOUND -> "Sound";
+            case SHAPE -> "Vector Shape";
+            default -> null;
+        };
+        if (panelTitle == null) return;
+
+        // Show the panel (handles docked/floating/hidden)
+        editorFrame.showPanel(panelTitle);
+
+        // Load the member into the panel
+        EditorPanel panel = editorFrame.getPanel(panelTitle);
+        if (panel instanceof PaintWindow pw) pw.loadMember(info);
+        else if (panel instanceof TextEditorWindow tw) tw.loadMember(info);
+        else if (panel instanceof FieldEditorWindow fw) fw.loadMember(info);
+        else if (panel instanceof ScriptEditorWindow sw) sw.loadMember(info);
+        else if (panel instanceof SoundWindow sow) sow.loadMember(info);
+    }
+
+    private EditorFrame getEditorFrame() {
+        Window w = SwingUtilities.getWindowAncestor(this);
+        return w instanceof EditorFrame ef ? ef : null;
+    }
+
+    private void showContextMenu(Component parent, MouseEvent e, CastMemberInfo info) {
         JPopupMenu popup = new JPopupMenu();
+
         JMenuItem exportItem = new JMenuItem("Export...");
         exportItem.addActionListener(ev -> exportMember(info));
         popup.add(exportItem);

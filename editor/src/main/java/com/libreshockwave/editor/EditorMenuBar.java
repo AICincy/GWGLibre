@@ -459,6 +459,7 @@ public class EditorMenuBar extends JMenuBar {
         addWindowToggle(menu, "Vector Shape", 0, 0);
         addWindowToggle(menu, "Text", KeyEvent.VK_6, InputEvent.CTRL_DOWN_MASK);
         addWindowToggle(menu, "Field", 0, 0);
+        addWindowToggle(menu, "Sound", 0, 0);
         addWindowToggle(menu, "Color Palettes", KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK | InputEvent.ALT_DOWN_MASK);
 
         menu.addSeparator();
