@@ -473,7 +473,18 @@ public class SpriteBaker {
             blitOnto(outPixels, loopW, loopH, subBitmap, sx, sy);
         }
 
-        return new Bitmap(loopW, loopH, 32, outPixels);
+        Bitmap result = new Bitmap(loopW, loopH, 32, outPixels);
+
+        // Apply the film loop sprite's own ink to the composited bitmap.
+        // Sub-sprites with COPY ink have opaque white backgrounds that need to be
+        // made transparent so lower-channel sprites (e.g., the orange bar) show through.
+        // useAlpha=false so 32-bit bitmaps get color-keyed (white→transparent).
+        if (InkProcessor.shouldProcessInk(sprite.getInk())) {
+            result = InkProcessor.applyInk(result, sprite.getInk(),
+                    sprite.getBackColor(), false, null);
+        }
+
+        return result;
     }
 
     /** Resolve a cast member from a film loop's embedded score. */

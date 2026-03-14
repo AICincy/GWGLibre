@@ -62,6 +62,12 @@ public class SpriteRegistry {
             // the Score position should no longer overwrite the behavior's values.
             state.setLocH(data.posX());
             state.setLocV(data.posY());
+            // Also update width/height — Score sprite dimensions can change between
+            // frames (e.g., different keyframes in the Score). Without this, sprites
+            // get stuck with dimensions from the first frame they appeared in.
+            if (!state.hasSizeChanged() && data.width() > 0 && data.height() > 0) {
+                state.applyIntrinsicSize(data.width(), data.height());
+            }
         }
     }
 
