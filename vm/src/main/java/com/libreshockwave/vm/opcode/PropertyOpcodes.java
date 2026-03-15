@@ -204,6 +204,7 @@ public final class PropertyOpcodes {
         Datum value = ctx.pop();
         Datum obj = ctx.pop();
 
+
         switch (obj) {
             case Datum.CastLibRef clr -> setCastLibProp(clr, propName, value);
             case Datum.CastMemberRef cmr -> setCastMemberProp(cmr, propName, value);
@@ -610,6 +611,19 @@ public final class PropertyOpcodes {
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
             }
             case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
+            case Datum.Int intVal -> {
+                // Director: chained property access on integers routes to sprite properties.
+                // e.g., pBuffer.image where pBuffer is a sprite channel number (integer).
+                // The window system stores pSprite/pBuffer as integer channel numbers.
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null && !"ilk".equalsIgnoreCase(propName)) {
+                    yield spriteProvider.getSpriteProp(intVal.value(), propName);
+                }
+                if ("ilk".equalsIgnoreCase(propName)) {
+                    yield Datum.symbol(TypeBuiltins.getIlkType(obj));
+                }
+                yield Datum.VOID;
+            }
             default -> getChainedObjProp(obj, propName);
         };
 

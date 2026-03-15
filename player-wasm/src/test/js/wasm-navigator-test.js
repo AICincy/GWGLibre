@@ -296,6 +296,9 @@ async function main() {
         onError: function(msg) {
             _testState.error = msg;
             console.error('[TEST] Error: ' + msg);
+        },
+        onDebugLog: function(log) {
+            // Debug log tracing disabled
         }
     });
 
@@ -317,6 +320,7 @@ async function main() {
             await new Promise(r => setTimeout(r, 100));
 
             const state = await page.evaluate(() => window._testState);
+            if (!state) continue;
             if (state.error) {
                 console.error('  Player error: ' + state.error);
             }
@@ -417,6 +421,45 @@ async function main() {
                 if (!hasOrange) console.log('    MISSING: Orange "Open" buttons (expected >0.5%)');
                 if (!hasWhite) console.log('    MISSING: White list background (expected >5%)');
             }
+        }
+
+        // Debug: read bitmap debug counters from WASM
+        const bmpCounters = await page.evaluate(() => {
+            if (window.player && window.player._wasmExports && window.player._wasmExports.getBmpDebugCounters) {
+                return window.player._wasmExports.getBmpDebugCounters();
+            }
+            return -1;
+        });
+        if (bmpCounters >= 0) {
+            const c1x1 = (bmpCounters >> 20) & 0x3FF;
+            const cSet = (bmpCounters >> 10) & 0x3FF;
+            const cFail = bmpCounters & 0x3FF;
+            console.log('\n--- Bitmap Debug Counters ---');
+            console.log('  1x1 defaults created: ' + c1x1);
+            console.log('  setBitmapProp(image) success: ' + cSet);
+            console.log('  setBitmapProp(image) fail (non-ImageRef): ' + cFail);
+        }
+
+        // Sample grey bar area: should be at approximately x=360-690, y=155-175 (first category row)
+        const greyBarSample = await page.evaluate(() => {
+            const canvas = document.getElementById('stage');
+            if (!canvas) return null;
+            const ctx = canvas.getContext('2d');
+            // Sample a horizontal strip where the first grey bar should be
+            const data = ctx.getImageData(365, 160, 300, 12).data;
+            const colorCounts = {};
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i+1], b = data[i+2];
+                const key = r + ',' + g + ',' + b;
+                colorCounts[key] = (colorCounts[key] || 0) + 1;
+            }
+            // Sort by frequency and return top 5
+            const sorted = Object.entries(colorCounts).sort((a,b) => b[1] - a[1]);
+            return sorted.slice(0, 8).map(e => '  rgb(' + e[0] + ') x' + e[1]);
+        });
+        if (greyBarSample) {
+            console.log('\n--- Grey Bar Area Pixel Analysis (x=365-665, y=160-172) ---');
+            greyBarSample.forEach(s => console.log(s));
         }
 
         // Dump sprite state for debugging ink issues

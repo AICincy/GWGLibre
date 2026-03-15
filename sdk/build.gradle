@@ -203,6 +203,34 @@ tasks.register('runPfr1ToTtf', JavaExec) {
     }
 }
 
+// Analyze 3D content in DCR files
+// Usage: ./gradlew :sdk:analyze3D [-Pfile=path/to/file.dcr]
+tasks.register('analyze3D', JavaExec) {
+    group = 'tools'
+    description = 'Analyze 3D content in Director/Shockwave files'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.Analyze3D'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Parse W3D files
+// Usage: ./gradlew :sdk:parseW3D [-Pfile=path/to/file.w3d]
+tasks.register('parseW3D', JavaExec) {
+    group = 'tools'
+    description = 'Parse Shockwave 3D (.w3d) files'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.W3DParser'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // GUI Tool to extract bitmaps and text from .cct cast files
 // Usage: ./gradlew :sdk:extractCasts
 tasks.register('extractCasts', JavaExec) {

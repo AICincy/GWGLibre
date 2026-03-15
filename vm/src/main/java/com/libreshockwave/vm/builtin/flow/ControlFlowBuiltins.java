@@ -153,6 +153,7 @@ public final class ControlFlowBuiltins {
         Datum targetList = args.get(1);
         List<Datum> extraArgs = args.size() > 2 ? args.subList(2, args.size()) : List.of();
 
+
         if (targetList instanceof Datum.ScriptInstance instance) {
             // call(#handler, singleObject, args...) — call on one instance
             callHandlerOnInstance(vm, instance, handlerName, extraArgs);

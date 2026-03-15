@@ -601,6 +601,16 @@ public class CastLib {
             DirectorFile file = DirectorFile.load(data);
             if (file != null) {
                 this.sourceFile = file;
+                // Preserve dynamically created members (memberNum >= nextDynamicMember start).
+                // These are runtime-created by Lingo via new(#type, castLib) and must survive
+                // cast reloads — otherwise window system buffers lose their bitmap data.
+                Map<Integer, CastMember> dynamicMembers = new HashMap<>();
+                for (Map.Entry<Integer, CastMember> entry : members.entrySet()) {
+                    if (entry.getKey() >= 10000) {
+                        dynamicMembers.put(entry.getKey(), entry.getValue());
+                    }
+                }
+
                 // Reset state so load() will re-parse with the new data
                 // (the cast may have been previously loaded with different data, e.g. empty.cst)
                 this.state = State.NONE;
@@ -608,6 +618,10 @@ public class CastLib {
                 this.members.clear();
                 this.scripts.clear();
                 load();
+
+                // Restore dynamic members
+                this.members.putAll(dynamicMembers);
+
                 return true;
             }
         } catch (Throwable e) {

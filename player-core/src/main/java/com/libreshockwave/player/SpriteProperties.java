@@ -98,6 +98,7 @@ public class SpriteProperties implements SpritePropertyProvider {
                     if (member != null) {
                         yield member.getProp("image");
                     }
+                    // sprite.image lookup failed: member not found for this sprite
                 }
                 yield Datum.VOID;
             }

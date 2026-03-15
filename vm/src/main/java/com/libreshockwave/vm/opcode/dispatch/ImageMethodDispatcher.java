@@ -22,7 +22,11 @@ public final class ImageMethodDispatcher {
         return switch (method) {
             case "fill" -> { bmp.markScriptModified(); yield fill(bmp, args); }
             case "draw" -> { bmp.markScriptModified(); yield draw(bmp, args); }
-            case "copypixels" -> { bmp.markScriptModified(); yield copyPixels(bmp, args); }
+            case "copypixels" -> {
+                bmp.markScriptModified();
+                // Debug removed
+                yield copyPixels(bmp, args);
+            }
             case "duplicate" -> new Datum.ImageRef(bmp.copy());
             case "crop" -> crop(bmp, args);
             case "setpixel" -> {

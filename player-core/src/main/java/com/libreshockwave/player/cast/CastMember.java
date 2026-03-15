@@ -741,13 +741,15 @@ public class CastMember {
             }
             case "image" -> {
                 // Director copies the bitmap into the member (not a reference assignment).
-                // This is critical: scripts like Common Button Class set pBuffer.image = pimage,
-                // then later fill pBuffer.image with white and re-draw pimage. If they share
-                // the same bitmap reference, the fill destroys the composed content.
                 if (value instanceof Datum.ImageRef ir) {
                     this.bitmap = ir.bitmap().copy();
                     this.textRenderedImage = this.bitmap;
                     this.textImageDirty = false;
+                    Bitmap nb = this.bitmap;
+                    if (nb.getWidth() > 50 || nb.getHeight() > 50) {
+                        System.out.println("[TXT-IMG] cl=" + castLibId.value() + " cm=" + getMemberNumber()
+                                + " " + nb.getWidth() + "x" + nb.getHeight());
+                    }
                     return true;
                 }
                 return false;
@@ -778,8 +780,9 @@ public class CastMember {
             }
             case "image" -> {
                 if (value instanceof Datum.ImageRef ir) {
-                    this.bitmap = ir.bitmap().copy();
-                    this.bitmap.markScriptModified();
+                    Bitmap newBmp = ir.bitmap().copy();
+                    newBmp.markScriptModified();
+                    this.bitmap = newBmp;
                     yield true;
                 }
                 yield false;
