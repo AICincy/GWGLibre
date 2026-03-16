@@ -66,7 +66,27 @@ public final class CallOpcodes {
             // The receiver for property access will be derived from args[0] in executeHandler.
             Datum receiver = ctx.getReceiver();
             if (!args.isEmpty() && args.get(0) == receiver) {
-                receiver = null;
+                // The bytecode pushed 'me' as the first arg. Check if the target handler
+                // declares 'me' as its first parameter. If it does (e.g., "on new me"),
+                // param0=me and args are correct as-is. If it doesn't (e.g.,
+                // "on createRoomItemImage tNum, tColor"), the handler's param0 should be
+                // the first EXPLICIT arg, so we need to strip 'me' from args and pass it
+                // as the receiver (which executeHandler will NOT prepend since we also pass
+                // it separately in a way that doesn't double-add).
+                boolean handlerDeclaresMeAsParam = false;
+                if (!targetHandler.argNameIds().isEmpty()) {
+                    String firstArgName = ctx.resolveName(targetHandler.argNameIds().get(0));
+                    handlerDeclaresMeAsParam = "me".equalsIgnoreCase(firstArgName);
+                }
+                if (handlerDeclaresMeAsParam) {
+                    // Handler expects param0=me, args already correct: [me, arg1, arg2, ...]
+                    receiver = null;
+                } else {
+                    // Handler does NOT count 'me' in params. Strip it from args so that
+                    // param0 = first explicit arg. Pass 'me' as the receiver for property access.
+                    receiver = args.get(0);
+                    args = new java.util.ArrayList<>(args.subList(1, args.size()));
+                }
             }
             Datum result = safeExecuteHandler(ctx, ctx.getScript(), targetHandler, args, receiver);
             if (!noRet) {

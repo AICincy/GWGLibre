@@ -141,20 +141,49 @@ public final class Scope {
     }
 
     // Parameter access
-    // In Lingo bytecode, parameters are 0-indexed:
-    //   param0 = first argument in args list
-    //   param1 = second argument in args list, etc.
-    // For parent script methods, the receiver ('me') is included as args[0].
-    // For movie script handlers, there's no receiver, so args[0] is the first explicit argument.
+    // In Lingo bytecode, parameters are 0-indexed from the EXPLICIT arguments:
+    //   param0 = first explicit argument (tNum), NOT 'me'
+    //   param1 = second explicit argument (tColor), etc.
+    // For parent script methods, the receiver ('me') may be prepended to the args list
+    // by the caller, so we need to skip it when computing param indices.
+    // The handler's argCount does NOT include 'me', so paramOffset compensates.
+
+    /** Offset for param indices: 1 if receiver is prepended but not in argCount. */
+    private int paramOffset = -1;
+
+    private int getParamOffset() {
+        if (paramOffset < 0) {
+            // If the receiver is in effectiveArgs[0] but the handler's argCount doesn't
+            // count it (i.e., handler's first declared param is NOT 'me'), offset by 1.
+            if (receiver != null && !receiver.isVoid()
+                    && !originalArguments.isEmpty()
+                    && originalArguments.size() > handler.argCount()) {
+                // Check if the handler's first declared param is 'me'
+                boolean firstParamIsMe = false;
+                if (!handler.argNameIds().isEmpty() && script != null && script.file() != null) {
+                    var names = script.file().getScriptNamesForScript(script);
+                    if (names != null) {
+                        String firstName = names.getName(handler.argNameIds().get(0));
+                        firstParamIsMe = "me".equalsIgnoreCase(firstName);
+                    }
+                }
+                paramOffset = firstParamIsMe ? 0 : 1;
+            } else {
+                paramOffset = 0;
+            }
+        }
+        return paramOffset;
+    }
 
     public Datum getParam(int index) {
+        int actualIndex = index + getParamOffset();
         // Check if param was modified via SET_PARAM
         if (modifiedParams != null && index >= 0 && index < modifiedParams.length && modifiedParams[index] != null) {
             return modifiedParams[index];
         }
-        // Otherwise return original argument
-        if (index >= 0 && index < originalArguments.size()) {
-            return originalArguments.get(index);
+        // Otherwise return original argument with offset
+        if (actualIndex >= 0 && actualIndex < originalArguments.size()) {
+            return originalArguments.get(actualIndex);
         }
         return Datum.VOID;
     }
