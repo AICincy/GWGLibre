@@ -24,13 +24,30 @@ class SimpleTextRendererTest {
         int plainLastRow = countOpaquePixelsOnRow(plain, underlined.getHeight() - 1);
         int underlinedLastRow = countOpaquePixelsOnRow(underlined, underlined.getHeight() - 1);
 
-        assertEquals(10, underlined.getHeight());
-        assertEquals(plain.getHeight(), underlined.getHeight());
+        assertTrue(underlined.getHeight() >= plain.getHeight());
         assertTrue(underlinedLastRow > plainLastRow,
                 "expected underline to add pixels on the last row, plain=" + plainLastRow
                         + " underlined=" + underlinedLastRow);
         assertTrue(underlinedLastRow >= 20,
                 "expected visible underline coverage on last row, got " + underlinedLastRow);
+    }
+
+    @Test
+    void underlineSitsBelowBitmapFontGlyphInk() {
+        SimpleTextRenderer renderer = new SimpleTextRenderer();
+
+        Bitmap underlined = renderer.renderText("Open", 33, 0,
+                "Verdana", 9, "underline",
+                "left", 0xFF000000, 0x00FFFFFF,
+                false, false, 9, 1);
+
+        int underlineRow = findLastOpaqueRow(underlined);
+        int glyphBottom = findOpaqueRowBefore(underlined, underlineRow);
+
+        assertEquals(underlined.getHeight() - 1, underlineRow,
+                "expected underline on the bottom row of the auto-sized line box");
+        assertEquals(underlineRow - 2, glyphBottom,
+                "expected one clear row between glyph ink and underline");
     }
 
     private static int countOpaquePixelsOnRow(Bitmap bitmap, int y) {
@@ -41,5 +58,23 @@ class SimpleTextRendererTest {
             }
         }
         return count;
+    }
+
+    private static int findLastOpaqueRow(Bitmap bitmap) {
+        for (int y = bitmap.getHeight() - 1; y >= 0; y--) {
+            if (countOpaquePixelsOnRow(bitmap, y) > 0) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    private static int findOpaqueRowBefore(Bitmap bitmap, int beforeY) {
+        for (int y = beforeY - 1; y >= 0; y--) {
+            if (countOpaquePixelsOnRow(bitmap, y) > 0) {
+                return y;
+            }
+        }
+        return -1;
     }
 }

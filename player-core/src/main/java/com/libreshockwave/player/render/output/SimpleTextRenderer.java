@@ -338,7 +338,8 @@ public class SimpleTextRenderer implements TextRenderer {
         //   member.topSpacing = requestedFixedLineSpace - fontSize
         // Total per-line advance = fontSize + topSpacing = requestedFixedLineSpace.
         int lineAdvance = lineHeight + topSpacing;
-        int neededHeight = lines.size() * lineAdvance;
+        int extraUnderlineRows = underline ? Math.max(0, font.getLineHeight() - lineHeight) : 0;
+        int neededHeight = lines.size() * lineAdvance + extraUnderlineRows;
         if (neededHeight > height) height = neededHeight;
 
         int[] pixels = new int[width * height];
@@ -347,6 +348,7 @@ public class SimpleTextRenderer implements TextRenderer {
         // Director's MacText line structure: leading + ascent + descent.
         // Leading goes above the text within each line.
         int leading = Math.max(0, lineHeight - font.getLineHeight());
+        int verticalOverflow = Math.max(0, font.getLineHeight() - lineHeight);
         int y = topSpacing;
         for (String line : lines) {
             if (y >= height) break;
@@ -356,7 +358,7 @@ public class SimpleTextRenderer implements TextRenderer {
                 case "right" -> x = width - font.getStringWidth(line);
             }
             int lineStartX = x;
-            int glyphY = y + leading;
+            int glyphY = y + leading - verticalOverflow;
             for (int i = 0; i < line.length(); i++) {
                 char ch = line.charAt(i);
                 font.drawChar(ch, pixels, width, height, x, glyphY, textColor);
@@ -366,7 +368,8 @@ public class SimpleTextRenderer implements TextRenderer {
                 x += font.getCharWidth(ch);
             }
             if (underline && line.length() > 0) {
-                int underlineY = Math.min(height - 1, glyphY + Math.max(0, font.getAscent()));
+                int inkBottom = findInkBottom(pixels, width, height, lineStartX, x, glyphY, Math.min(height - 1, glyphY + font.getLineHeight() - 1));
+                int underlineY = Math.min(height - 1, Math.max(glyphY, inkBottom + 2));
                 drawUnderline(pixels, width, height, underlineY, lineStartX, x, textColor);
             }
             y += lineAdvance;
@@ -404,7 +407,8 @@ public class SimpleTextRenderer implements TextRenderer {
 
         // Per-line leading: topSpacing adds above each line (see renderWithBitmapFont comment)
         int lineAdvance = lineHeight + topSpacing;
-        int neededHeight = lines.size() * lineAdvance;
+        int extraUnderlineRows = underline ? Math.max(0, builtinLineHeight(fontSize) - lineHeight) : 0;
+        int neededHeight = lines.size() * lineAdvance + extraUnderlineRows;
         if (neededHeight > height) height = neededHeight;
 
         int[] pixels = new int[width * height];
@@ -424,7 +428,9 @@ public class SimpleTextRenderer implements TextRenderer {
                 x += charW;
             }
             if (underline && line.length() > 0) {
-                drawUnderline(pixels, width, height, y + ascent + 1, lineStartX, x, textColor);
+                int glyphTop = Math.max(0, y);
+                int glyphBottom = findInkBottom(pixels, width, height, lineStartX, x, glyphTop, Math.min(height - 1, y + ascent));
+                drawUnderline(pixels, width, height, Math.min(height - 1, glyphBottom + 2), lineStartX, x, textColor);
             }
             y += lineAdvance;
         }
@@ -439,6 +445,22 @@ public class SimpleTextRenderer implements TextRenderer {
                 pixels[ulY * width + ux] = textColor;
             }
         }
+    }
+
+    private static int findInkBottom(int[] pixels, int width, int height,
+                                     int startX, int endX, int startY, int endY) {
+        int clampedStartX = Math.max(0, startX);
+        int clampedEndX = Math.min(width, endX);
+        int clampedStartY = Math.max(0, startY);
+        int clampedEndY = Math.min(height - 1, endY);
+        for (int y = clampedEndY; y >= clampedStartY; y--) {
+            for (int x = clampedStartX; x < clampedEndX; x++) {
+                if (((pixels[y * width + x] >>> 24) & 0xFF) != 0) {
+                    return y;
+                }
+            }
+        }
+        return clampedStartY;
     }
 
     /**
